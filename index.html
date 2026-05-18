@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>白鲸社群排期表</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--primary:#2563eb;--primary-dark:#1d4ed8;--secondary:#0ea5e9;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--bg:#f0f4ff;--card-bg:#fff;--border:#e2e8f0;--text:#1e293b;--text-muted:#64748b;--shadow:0 4px 16px rgba(37,99,235,.08);--radius:12px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* AUTH */
+#auth-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 50%,#0ea5e9 100%)}
+.auth-card{background:#fff;border-radius:20px;padding:40px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-logo h1{font-size:22px;font-weight:700;color:var(--primary);line-height:1.4}
+.auth-logo .whale{font-size:44px;display:block;margin-bottom:8px}
+.auth-tabs{display:flex;background:#f1f5f9;border-radius:10px;padding:4px;margin-bottom:24px}
+.auth-tab{flex:1;text-align:center;padding:8px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--text-muted);transition:all .2s;user-select:none}
+.auth-tab.active{background:#fff;color:var(--primary);font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;font-weight:500;margin-bottom:6px}
+.form-input{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;outline:none;transition:border-color .2s;background:#fff}
+.form-input:focus{border-color:var(--primary)}
+.btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-dark)}
+.auth-tip{text-align:center;font-size:12px;color:var(--text-muted);margin-top:16px}
+.auth-error{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
+
+/* TOPBAR */
+#app-page{display:none;flex-direction:column;min-height:100vh}
+.topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.topbar-title{font-size:18px;font-weight:700;color:var(--primary)}
+.topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.user-badge{display:flex;align-items:center;gap:6px;font-size:13px}
+.user-role{background:#eff6ff;color:var(--primary);padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.user-role.admin{background:#fef3c7;color:#d97706}
+.btn-sm{padding:6px 14px;font-size:13px;border-radius:8px;cursor:pointer;font-weight:500;transition:all .2s;border:none}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+.btn-add{background:var(--primary);color:#fff}
+.btn-add:hover{background:var(--primary-dark)}
+.btn-manage{background:#fef3c7;color:#d97706;border:1.5px solid #fde68a}
+.btn-manage:hover{background:#fde68a}
+
+/* CAL NAV */
+.cal-nav{display:flex;align-items:center;justify-content:center;gap:14px;padding:14px 20px 0}
+.cal-nav-btn{background:#fff;border:1.5px solid var(--border);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.cal-nav-btn:hover{border-color:var(--primary);color:var(--primary)}
+.cal-nav-title{font-size:16px;font-weight:700;min-width:200px;text-align:center}
+.cal-today-btn{background:var(--primary);color:#fff;border:none;padding:6px 16px;border-radius:8px;font-size:13px;cursor:pointer}
+.cal-today-btn:hover{background:var(--primary-dark)}
+
+/* CALENDAR */
+.calendar-wrap{padding:14px 20px 24px;overflow-x:auto}
+.calendar{border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow)}
+.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary))}
+.cal-header-cell{padding:12px 6px;text-align:center;color:#fff;font-size:13px;font-weight:600}
+.cal-header-cell.label{background:rgba(0,0,0,.12);font-size:11px;font-weight:500}
+.cal-dates-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:2px solid var(--border);background:#f8faff}
+.cal-date-cell{padding:8px 4px;text-align:center;border-left:1px solid var(--border)}
+.cal-date-cell:first-child{border-left:none}
+.date-num{display:inline-block;width:32px;height:32px;border-radius:50%;line-height:32px;font-size:14px;font-weight:700;color:var(--text)}
+.date-num.today{background:var(--primary);color:#fff}
+.cal-body{display:flex;flex-direction:column}
+.cal-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:1px solid var(--border);min-height:80px}
+.cal-row:last-child{border-bottom:none}
+.cal-row-label{padding:8px 6px;background:#f8faff;border-right:1px solid var(--border);display:flex;align-items:flex-start;justify-content:center}
+.row-label-text{font-size:11px;font-weight:600;color:var(--text-muted);text-align:center;line-height:1.5}
+.cal-cell{padding:5px 4px;border-left:1px solid var(--border);cursor:default;transition:background .15s;position:relative;min-height:80px}
+.cal-cell.admin-cell{cursor:pointer}
+.cal-cell.admin-cell:hover{background:#f0f7ff}
+.cal-cell.today-col{background:#eff6ff}
+.cal-cell.today-col.admin-cell:hover{background:#dbeafe}
+.event-card{background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 7px;margin-bottom:3px;font-size:11px;cursor:pointer;transition:all .15s;border-left:3px solid var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.event-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.1);transform:translateY(-1px)}
+.event-card.type-sponsor{border-left-color:#f59e0b}
+.event-card.type-business{border-left-color:#10b981}
+.event-card.type-exchange{border-left-color:#8b5cf6}
+.event-name{font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px}
+.event-owner{color:var(--text-muted);font-size:10px;margin-bottom:2px}
+.event-tags{display:flex;flex-wrap:wrap;gap:2px}
+.etag{display:inline-block;padding:1px 4px;border-radius:3px;font-size:9px;font-weight:600}
+.etag-notice{background:#fef3c7;color:#d97706}
+.etag-mention{background:#eff6ff;color:#2563eb}
+.etag-hb{background:#fef2f2;color:#ef4444}
+.etag-top{background:#f0fdf4;color:#16a34a}
+.etag-circle{background:#fdf4ff;color:#9333ea}
+.etag-exchange{background:#f5f3ff;color:#7c3aed}
+.cell-add-hint{position:absolute;bottom:3px;right:4px;font-size:16px;color:#cbd5e1;opacity:0;transition:opacity .2s;pointer-events:none;line-height:1}
+.cal-cell.admin-cell:hover .cell-add-hint{opacity:1}
+.cal-footer-hint{text-align:center;padding:8px;font-size:11px;color:#94a3b8;background:#f8faff;border-top:1px solid var(--border)}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:620px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-lg{max-width:760px}
+.modal-header{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:10;border-radius:16px 16px 0 0}
+.modal-title{font-size:16px;font-weight:700}
+.modal-close{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:transparent;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+.modal-close:hover{background:#f1f5f9}
+.modal-body{padding:18px 22px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#fff;border-radius:0 0 16px 16px}
+.step-bar{display:flex;align-items:center;gap:6px;margin-bottom:18px}
+.step-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid var(--border);color:var(--text-muted);transition:all .2s;cursor:pointer}
+.step-dot.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.step-dot.done{background:var(--success);border-color:var(--success);color:#fff}
+.step-line{flex:1;height:2px;background:var(--border);transition:background .2s}
+.step-line.done{background:var(--success)}
+.modal .form-group{margin-bottom:14px}
+.modal .form-group label{font-size:12px;font-weight:600;color:var(--text);margin-bottom:5px;display:block}
+.modal .form-input{width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;transition:border-color .2s;background:#fff}
+.modal .form-input:focus{border-color:var(--primary)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.required::after{content:' *';color:var(--danger)}
+.section-title{font-size:13px;font-weight:700;color:var(--primary);margin:16px 0 10px;padding-bottom:5px;border-bottom:2px solid #eff6ff;display:flex;align-items:center;gap:6px}
+.checkbox-group{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.checkbox-item{display:flex;align-items:center;gap:4px;cursor:pointer;padding:5px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;transition:all .15s;user-select:none}
+.checkbox-item:hover{border-color:var(--primary);color:var(--primary)}
+.checkbox-item.checked{background:#eff6ff;border-color:var(--primary);color:var(--primary);font-weight:500}
+.radio-group{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.radio-item{display:flex;align-items:center;gap:4px;cursor:pointer;padding:5px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;transition:all .15s;user-select:none}
+.radio-item:hover{border-color:var(--primary)}
+.radio-item.selected{background:#eff6ff;border-color:var(--primary);color:var(--primary);font-weight:500}
+.btn-modal-cancel{padding:7px 18px;border:1.5px solid var(--border);background:transparent;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
+.btn-modal-cancel:hover{border-color:var(--primary);color:var(--primary)}
+.btn-modal-submit,.btn-modal-next{padding:7px 22px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
+.btn-modal-submit:hover,.btn-modal-next:hover{background:var(--primary-dark)}
+.btn-modal-danger{padding:7px 18px;background:#fef2f2;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
+.file-upload-area{border:2px dashed var(--border);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all .2s}
+.file-upload-area:hover{border-color:var(--primary);background:#f0f7ff}
+.file-item{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:#f8faff;border-radius:7px;margin-top:6px;font-size:12px}
+.file-item a{color:var(--primary);text-decoration:none}
+.constraint-tip{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400e;margin-top:8px;line-height:1.6}
+
+/* DETAIL */
+.detail-section{margin-bottom:14px}
+.detail-section h4{font-size:12px;font-weight:700;color:var(--primary);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #eff6ff}
+.detail-row{display:flex;gap:8px;margin-bottom:6px;font-size:13px}
+.detail-label{color:var(--text-muted);min-width:90px;flex-shrink:0;font-size:12px}
+.detail-value{color:var(--text);font-weight:500;flex:1}
+
+/* ADMIN */
+.user-table{width:100%;border-collapse:collapse;font-size:13px}
+.user-table th{background:#f8faff;padding:10px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:2px solid var(--border)}
+.user-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.user-table tr:last-child td{border-bottom:none}
+.user-table tr:hover td{background:#f8faff}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.status-admin{background:#fef3c7;color:#d97706}
+.status-visitor{background:#f1f5f9;color:#64748b}
+.option-section{margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}
+.option-section:last-child{border-bottom:none}
+.option-list{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;min-height:34px;background:#f8faff;padding:7px;border-radius:8px}
+.option-chip{display:flex;align-items:center;gap:3px;background:#fff;border:1px solid var(--border);padding:3px 8px;border-radius:7px;font-size:12px}
+.option-chip button{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0;font-size:11px;line-height:1}
+.option-chip button:hover{color:var(--danger)}
+.option-add-row{display:flex;gap:7px}
+.option-add-input{flex:1;padding:6px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;outline:none}
+.option-add-input:focus{border-color:var(--primary)}
+.btn-add-opt{padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;white-space:nowrap}
+.admin-tab-btns{display:flex;gap:6px;margin-bottom:18px}
+.admin-tab-btn{padding:7px 16px;border:1.5px solid var(--border);background:transparent;border-radius:8px;font-size:13px;cursor:pointer;transition:all .2s;font-weight:500}
+.admin-tab-btn.active{background:#eff6ff;color:var(--primary);border-color:#bfdbfe;font-weight:600}
+
+/* TOAST */
+.toast{position:fixed;top:66px;right:20px;background:#1e293b;color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.2);transform:translateY(-16px);opacity:0;transition:all .3s;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--success)}
+.toast.error{background:var(--danger)}
+
+/* LOADING */
+.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;z-index:9998}
+.spinner{width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.hidden{display:none!important}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+</style>
+</head>
+<body>
+
+<!-- ===== AUTH ===== -->
+<div id="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="whale">🐋</span>
+      <h1>白鲸社群排期表</h1>
+      <div style="font-size:12px;color:#94a3b8;margin-top:4px">社群活动排期管理平台</div>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tab-login" onclick="switchTab('login')">登 录</div>
+      <div class="auth-tab" id="tab-register" onclick="switchTab('register')">注 册</div>
+    </div>
+    <div id="auth-error" class="auth-error"></div>
+    <!-- Login -->
+    <div id="login-form">
+      <div class="form-group">
+        <label>账号（手机号）</label>
+        <input class="form-input" id="login-phone" type="text" placeholder="请输入手机号">
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input class="form-input" id="login-pass" type="password" placeholder="请输入密码">
+      </div>
+      <button class="btn btn-primary" onclick="doLogin()">登 录</button>
+    </div>
+    <!-- Register -->
+    <div id="register-form" class="hidden">
+      <div class="form-group">
+        <label>账号（手机号）</label>
+        <input class="form-input" id="reg-phone" type="text" placeholder="请输入手机号">
+      </div>
+      <div class="form-group">
+        <label>昵称</label>
+        <input class="form-input" id="reg-name" type="text" placeholder="请输入昵称">
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input class="form-input" id="reg-pass" type="password" placeholder="请设置密码（至少6位）">
+      </div>
+      <div class="form-group">
+        <label>确认密码</label>
+        <input class="form-input" id="reg-pass2" type="password" placeholder="请再次输入密码">
+      </div>
+      <button class="btn btn-primary" onclick="doRegister()">注 册</button>
+    </div>
+    <div class="auth-tip">注册后默认游客权限 · 可由管理员升级</div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="app-page">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="topbar-title">🐋 白鲸社群排期表</span>
+    </div>
+    <div class="topbar-right">
+      <span class="user-badge">
+        <span id="user-name-disp" style="font-weight:500"></span>
+        <span class="user-role" id="user-role-badge">游客</span>
+      </span>
+      <button class="btn-sm btn-add hidden" id="btn-add-sch" onclick="openAddModal()">＋ 新增排期</button>
+      <button class="btn-sm btn-manage hidden" id="btn-admin" onclick="openAdminModal()">⚙ 管理</button>
+      <button class="btn-sm btn-outline" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+
+  <div class="cal-nav">
+    <button class="cal-nav-btn" onclick="changeWeek(-1)">‹</button>
+    <div class="cal-nav-title" id="cal-nav-title"></div>
+    <button class="cal-nav-btn" onclick="changeWeek(1)">›</button>
+    <button class="cal-today-btn" onclick="goToday()">今天</button>
+  </div>
+
+  <div class="calendar-wrap">
+    <div class="calendar" id="calendar"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== MODAL: Add/Edit Schedule ===== -->
+<div class="modal-overlay hidden" id="sch-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="sch-modal-title">新增排期</div>
+      <button class="modal-close" onclick="closeModal('sch-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="sch-modal-body"></div>
+    <div class="modal-footer" id="sch-modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal('sch-modal')">取消</button>
+      <button class="btn-modal-next" id="sch-next-btn">下一步 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Detail ===== -->
+<div class="modal-overlay hidden" id="detail-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">排期详情</div>
+      <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+    <div class="modal-footer" id="detail-footer">
+      <button class="btn-modal-cancel" onclick="closeModal('detail-modal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Admin ===== -->
+<div class="modal-overlay hidden" id="admin-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">⚙ 管理员控制台</div>
+      <button class="modal-close" onclick="closeModal('admin-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="admin-tab-btns">
+        <button class="admin-tab-btn active" id="atab-users" onclick="switchAdminTab('users')">👥 用户管理</button>
+        <button class="admin-tab-btn" id="atab-opts" onclick="switchAdminTab('opts')">⚙ 选项管理</button>
+      </div>
+      <div id="admin-users-panel"><div style="color:var(--text-muted);font-size:13px">加载中...</div></div>
+      <div id="admin-opts-panel" class="hidden"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal('admin-modal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== CONFIG =====
+const SB_URL = 'https://puyqbvyxwecaiuizwmhx.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1eXFidnl4d2VjYWl1aXp3bWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwODY4NTUsImV4cCI6MjA5NDY2Mjg1NX0.myNB1KMAW8oMhxBt80nqwO0OutmbrA43WudSqA_qAgw';
+const ADMIN_PHONE = '13799987075';
+const ADMIN_PASS = 'baijing2026';
+const HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
+
+// ===== STATE =====
+let currentUser = null, isAdmin = false;
+let weekStart = getWeekStart(new Date());
+let scheduleMap = {};
+let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], industryRegionGroups:[], industryNeeds:[], regionNeeds:[] };
+let editingId = null;
+let md = {}; // modal data
+let pendingFiles = [];
+
+// ===== UTILS =====
+function getWeekStart(d) {
+  const x = new Date(d); const day = x.getDay();
+  x.setDate(x.getDate() - (day===0?6:day-1)); x.setHours(0,0,0,0); return x;
+}
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function isToday(d){ const t=new Date(); return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate(); }
+function j(v){ try{return JSON.parse(v||'[]');}catch(e){return [];} }
+
+function toast(msg,type='') {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className=`toast show ${type}`;
+  setTimeout(()=>el.className='toast',2600);
+}
+
+let loadingTimer=null;
+function showLoading(show=true) {
+  clearTimeout(loadingTimer);
+  if(show) {
+    loadingTimer = setTimeout(()=>{
+      if(!document.getElementById('loading-ov')) {
+        const el=document.createElement('div'); el.id='loading-ov'; el.className='loading-overlay';
+        el.innerHTML='<div class="spinner"></div>'; document.body.appendChild(el);
+      }
+    }, 200);
+  } else {
+    const el=document.getElementById('loading-ov'); if(el) el.remove();
+  }
+}
+
+async function api(method, table, params='', body=null) {
+  const opts2 = { method, headers: {...HEADERS} };
+  if(body) opts2.body = JSON.stringify(body);
+  if(method==='POST') opts2.headers['Prefer']='return=representation';
+  if(method==='PATCH') opts2.headers['Prefer']='return=representation';
+  const r = await fetch(`${SB_URL}/rest/v1/${table}${params}`, opts2);
+  if(!r.ok) { const t=await r.text(); throw new Error(t); }
+  if(method==='DELETE') return true;
+  const txt=await r.text(); return txt?JSON.parse(txt):[];
+}
+
+// ===== AUTH =====
+function switchTab(tab) {
+  ['login','register'].forEach(t => {
+    document.getElementById(`tab-${t}`).className='auth-tab'+(t===tab?' active':'');
+    document.getElementById(`${t}-form`).className=t===tab?'':'hidden';
+  });
+  document.getElementById('auth-error').style.display='none';
+}
+
+function showAuthErr(msg) { const e=document.getElementById('auth-error'); e.textContent=msg; e.style.display='block'; }
+
+async function doRegister() {
+  const phone=document.getElementById('reg-phone').value.trim();
+  const name=document.getElementById('reg-name').value.trim();
+  const pass=document.getElementById('reg-pass').value;
+  const pass2=document.getElementById('reg-pass2').value;
+  if(!phone||!name||!pass) return showAuthErr('请填写所有字段');
+  if(pass.length<6) return showAuthErr('密码至少6位');
+  if(pass!==pass2) return showAuthErr('两次密码不一致');
+  if(phone===ADMIN_PHONE) return showAuthErr('该账号已被使用');
+  showLoading();
+  try {
+    const ex=await api('GET','bj_users',`?phone=eq.${phone}`);
+    if(ex.length>0){showLoading(false);return showAuthErr('该手机号已注册');}
+    await api('POST','bj_users','',{phone,name,password:pass,role:'visitor',created_at:new Date().toISOString()});
+    showLoading(false); toast('注册成功！请登录','success'); switchTab('login');
+    document.getElementById('login-phone').value=phone;
+  }catch(e){showLoading(false);showAuthErr('注册失败：'+e.message);}
+}
+
+async function doLogin() {
+  const phone=document.getElementById('login-phone').value.trim();
+  const pass=document.getElementById('login-pass').value;
+  if(!phone||!pass) return showAuthErr('请输入账号和密码');
+  showLoading();
+  try {
+    // 先测试数据库连通性
+    try {
+      const testR = await fetch(`${SB_URL}/rest/v1/bj_users?limit=1`, {
+        headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
+      });
+      if(testR.status === 401 || testR.status === 403) {
+        showLoading(false);
+        return showAuthErr('❌ 权限不足（' + testR.status + '）：RLS策略未正确配置。请到Supabase控制台检查是否执行了"CREATE POLICY"语句。');
+      }
+      if(testR.status === 404) {
+        const bodyText = await testR.text();
+        if(bodyText.includes('does not exist')) {
+          showLoading(false);
+          return showAuthErr('❌ 表不存在：bj_users 表未创建。请先执行 setup-db.html 中的完整SQL语句。');
+        }
+      }
+    } catch(diagErr) {
+      showLoading(false);
+      return showAuthErr('❌ 无法连接到数据库：' + diagErr.message + '（请检查网络或Supabase项目状态）');
+    }
+    
+    if(phone===ADMIN_PHONE&&pass===ADMIN_PASS) {
+      let u=await api('GET','bj_users',`?phone=eq.${phone}`);
+      if(!u.length) { await api('POST','bj_users','',{phone,name:'管理员',password:pass,role:'admin',created_at:new Date().toISOString()}); u=await api('GET','bj_users',`?phone=eq.${phone}`); }
+      else if(u[0].role!=='admin') { await api('PATCH','bj_users',`?id=eq.${u[0].id}`,{role:'admin'}); u[0].role='admin'; }
+      currentUser=u[0]; isAdmin=true; showLoading(false); enterApp(); return;
+    }
+    const users=await api('GET','bj_users',`?phone=eq.${phone}&password=eq.${pass}`);
+    if(!users.length){showLoading(false);return showAuthErr('账号或密码错误');}
+    currentUser=users[0]; isAdmin=currentUser.role==='admin'; showLoading(false); enterApp();
+  }catch(e){showLoading(false);showAuthErr('登录失败：'+e.message+'（'+(e.stack||'').split('\n')[1]+'）');}
+}
+
+function doLogout() {
+  currentUser=null; isAdmin=false; scheduleMap={}; weekStart=getWeekStart(new Date());
+  document.getElementById('auth-page').style.display='flex';
+  document.getElementById('app-page').style.display='none';
+  document.getElementById('login-phone').value=''; document.getElementById('login-pass').value='';
+}
+
+async function enterApp() {
+  document.getElementById('auth-page').style.display='none';
+  document.getElementById('app-page').style.display='flex';
+  document.getElementById('user-name-disp').textContent=currentUser.name||currentUser.phone;
+  const rb=document.getElementById('user-role-badge');
+  rb.textContent=isAdmin?'管理员':'游客'; rb.className='user-role'+(isAdmin?' admin':'');
+  document.getElementById('btn-add-sch').className='btn-sm btn-add'+(isAdmin?'':' hidden');
+  document.getElementById('btn-admin').className='btn-sm btn-manage'+(isAdmin?'':' hidden');
+  await loadOpts();
+  await refreshCalendar();
+}
+
+// ===== OPTIONS =====
+async function loadOpts() {
+  try {
+    const data=await api('GET','bj_options','');
+    opts={departments:[],circleDataTypes:[],officialGroupDataTypes:[],industryRegionGroups:[],industryNeeds:[],regionNeeds:[]};
+    data.forEach(o=>{ if(opts[o.category]!==undefined) opts[o.category].push(o.value); });
+  }catch(e){ console.warn('load opts fail',e); }
+}
+
+// ===== CALENDAR =====
+const WEEKDAYS=['一','二','三','四','五','六','日'];
+const SLOTS=[{k:'morning',l:'上午\n群推送'},{k:'noon',l:'中午\n发圈'},{k:'afternoon',l:'下午\n群推送'},{k:'afternoon_circle',l:'下午\n发圈'}];
+
+function changeWeek(d){ weekStart=addDays(weekStart,d*7); refreshCalendar(); }
+function goToday(){ weekStart=getWeekStart(new Date()); refreshCalendar(); }
+
+async function refreshCalendar() {
+  showLoading();
+  try {
+    const end=addDays(weekStart,6);
+    const data=await api('GET','bj_schedules',`?date=gte.${fmtDate(weekStart)}&date=lte.${fmtDate(end)}&order=date.asc,time_slot.asc`);
+    scheduleMap={};
+    data.forEach(item=>{ const k=`${item.date}_${item.time_slot}`; if(!scheduleMap[k]) scheduleMap[k]=[]; scheduleMap[k].push(item); });
+    renderCalendar();
+  }catch(e){ toast('加载数据失败','error'); console.error(e); }
+  showLoading(false);
+}
+
+function renderCalendar() {
+  const end=addDays(weekStart,6);
+  const y1=weekStart.getFullYear(), m1=weekStart.getMonth()+1, d1=weekStart.getDate();
+  const y2=end.getFullYear(), m2=end.getMonth()+1, d2=end.getDate();
+  document.getElementById('cal-nav-title').textContent=`${y1}年${m1}月${d1}日 — ${m2}月${d2}日`;
+
+  let h='';
+  // Header
+  h+='<div class="cal-header"><div class="cal-header-cell label">时段</div>';
+  WEEKDAYS.forEach(w=>h+=`<div class="cal-header-cell">周${w}</div>`);
+  h+='</div>';
+  // Dates row
+  h+='<div class="cal-dates-row"><div class="cal-date-cell"></div>';
+  for(let i=0;i<7;i++){
+    const d=addDays(weekStart,i); const td=isToday(d)?' today':'';
+    h+=`<div class="cal-date-cell"><span class="date-num${td}">${d.getDate()}</span></div>`;
+  }
+  h+='</div><div class="cal-body">';
+  // Rows
+  SLOTS.forEach(slot=>{
+    h+=`<div class="cal-row"><div class="cal-row-label"><span class="row-label-text">${slot.l.replace('\n','<br>')}</span></div>`;
+    for(let i=0;i<7;i++){
+      const d=addDays(weekStart,i); const ds=fmtDate(d);
+      const tc=isToday(d)?' today-col':'';
+      const ac=isAdmin?' admin-cell':'';
+      const dbl=isAdmin?` ondblclick="dbClick('${ds}','${slot.k}',event)"`:'';
+      h+=`<div class="cal-cell${tc}${ac}"${dbl}>`;
+      (scheduleMap[`${ds}_${slot.k}`]||[]).forEach(ev=>h+=renderCard(ev));
+      if(isAdmin) h+='<div class="cell-add-hint">＋</div>';
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+  h+='</div>';
+  if(isAdmin) h+='<div class="cal-footer-hint">💡 双击单元格可快速新增排期 · 点击卡片查看详情</div>';
+  document.getElementById('calendar').innerHTML=h;
+}
+
+function renderCard(ev) {
+  let pf=j(ev.publish_forms), igf=j(ev.industry_group_forms);
+  let tags='';
+  if(ev.activity_type==='置换') tags+='<span class="etag etag-exchange">置换</span>';
+  else {
+    if(['noon','afternoon_circle'].includes(ev.time_slot)) tags+='<span class="etag etag-circle">发圈</span>';
+    if(pf.includes('@所有人')) tags+='<span class="etag etag-mention">@全体</span>';
+    if(pf.includes('群置顶')) tags+='<span class="etag etag-top">置顶</span>';
+    if(ev.has_hongbao_circle||ev.has_hongbao_official||ev.has_hongbao_industry) tags+='<span class="etag etag-hb">🧧</span>';
+  }
+  const tc = ev.activity_type==='赞助'?'type-sponsor':ev.activity_type==='商务'?'type-business':ev.activity_type==='置换'?'type-exchange':'';
+  return `<div class="event-card ${tc}" onclick="openDetail(${ev.id},event)">
+    <div class="event-name">${ev.activity_name}</div>
+    <div class="event-owner">👤 ${ev.owner}</div>
+    <div class="event-tags">${tags}</div>
+  </div>`;
+}
+
+function dbClick(date, slot, e) {
+  if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot);
+}
+
+// ===== SCHEDULE MODAL =====
+function openAddModal(preDate='', preSlot='') {
+  if(!isAdmin) return toast('只有管理员可操作','error');
+  editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot};
+  document.getElementById('sch-modal-title').textContent='新增排期';
+  renderStep1(); document.getElementById('sch-modal').classList.remove('hidden');
+}
+
+async function openEditModal(id) {
+  if(!isAdmin) return toast('只有管理员可操作','error');
+  showLoading();
+  try {
+    const data=await api('GET','bj_schedules',`?id=eq.${id}`);
+    if(!data||!data[0]){showLoading(false);return toast('数据不存在','error');}
+    editingId=id; pendingFiles=[]; md={...data[0]};
+    md.publish_forms=j(md.publish_forms); md.industry_group_forms=j(md.industry_group_forms);
+    md.official_groups=j(md.official_groups); md.contract_files=j(md.contract_files);
+    document.getElementById('sch-modal-title').textContent='编辑排期';
+    showLoading(false); renderStep1(); document.getElementById('sch-modal').classList.remove('hidden');
+  }catch(e){showLoading(false);toast('加载失败','error');}
+}
+
+function renderStep1() {
+  const slotLabels={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
+  const curSlot=md.time_slot||md.slot||'';
+  const curType=md.activity_type||'';
+  const deptOpts=opts.departments.map(d=>`<option value="${d}" ${md.department===d?'selected':''}>${d}</option>`).join('');
+  
+  document.getElementById('sch-modal-body').innerHTML=`
+    <div class="step-bar">
+      <div class="step-dot active">1</div>
+      <div class="step-line" id="sl1"></div>
+      <div class="step-dot" id="sd2">2</div>
+    </div>
+    <div class="form-group">
+      <label class="required">活动名称</label>
+      <input class="form-input" id="f_name" value="${md.activity_name||''}" placeholder="请输入活动名称">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="required">活动部门</label>
+        <select class="form-input" id="f_dept">
+          <option value="">请选择</option>${deptOpts}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="required">活动类型</label>
+        <select class="form-input" id="f_type" onchange="updateTypeTip()">
+          <option value="">请选择</option>
+          ${['赞助','商务','置换'].map(t=>`<option value="${t}" ${curType===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="required">负责人</label>
+        <input class="form-input" id="f_owner" value="${md.owner||''}" placeholder="姓名">
+      </div>
+      <div class="form-group">
+        <label class="required">宣发日期</label>
+        <input class="form-input" id="f_date" type="date" value="${md.date||''}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="required">宣发时段</label>
+      <div class="radio-group" id="f_slots">
+        ${Object.entries(slotLabels).map(([k,l])=>`<label class="radio-item ${curSlot===k?'selected':''}" data-slot="${k}" onclick="selSlot(this)">${l}</label>`).join('')}
+      </div>
+    </div>
+    <div id="type-tip"></div>
+  `;
+  document.getElementById('sch-next-btn').textContent='下一步 →';
+  document.getElementById('sch-next-btn').onclick=step1Next;
+  updateTypeTip();
+}
+
+function updateTypeTip() {
+  const t=document.getElementById('f_type').value;
+  const el=document.getElementById('type-tip');
+  if(t==='置换') el.innerHTML='<div class="constraint-tip">⚠️ 置换类型：不适用标准推送排期规则，直接填写置换信息。</div>';
+  else if(t==='赞助'||t==='商务') el.innerHTML='<div class="constraint-tip">📋 规则：朋友圈最多2次（间隔≥1天），官方群1次，行业&地区群1次。</div>';
+  else el.innerHTML='';
+}
+
+function selSlot(el) {
+  document.querySelectorAll('#f_slots .radio-item').forEach(x=>x.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function step1Next() {
+  const name=document.getElementById('f_name').value.trim();
+  const dept=document.getElementById('f_dept').value;
+  const type=document.getElementById('f_type').value;
+  const owner=document.getElementById('f_owner').value.trim();
+  const date=document.getElementById('f_date').value;
+  const slotEl=document.querySelector('#f_slots .radio-item.selected');
+  if(!name||!dept||!type||!owner||!date) return toast('请填写所有必填项','error');
+  if(!slotEl) return toast('请选择宣发时段','error');
+  md.activity_name=name; md.department=dept; md.activity_type=type;
+  md.owner=owner; md.date=date; md.time_slot=slotEl.dataset.slot;
+  document.getElementById('sd2').className='step-dot active';
+  document.getElementById('sl1').className='step-line done';
+  if(type==='置换') renderStep2Exchange(); else renderStep2Spon();
+}
+
+function renderStep2Spon() {
+  if(!Array.isArray(md.publish_forms)) md.publish_forms=j(md.publish_forms);
+  if(!Array.isArray(md.industry_group_forms)) md.industry_group_forms=j(md.industry_group_forms);
+  if(!Array.isArray(md.official_groups)) md.official_groups=j(md.official_groups);
+  if(!Array.isArray(md.contract_files)) md.contract_files=j(md.contract_files);
+
+  const cdt=opts.circleDataTypes.map(d=>`<option value="${d}" ${md.circle_data_type===d?'selected':''}>${d}</option>`).join('');
+  const odt=opts.officialGroupDataTypes.map(d=>`<option value="${d}" ${md.official_group_data_type===d?'selected':''}>${d}</option>`).join('');
+  const igt=opts.industryRegionGroups.map(d=>`<option value="${d}" ${md.industry_region_group===d?'selected':''}>${d}</option>`).join('');
+  const fms=['普通群发','@所有人','群置顶'];
+
+  const existFiles=(md.contract_files||[]).map(f=>`<div class="file-item"><span>📄 ${f.name}</span><a href="${f.url}" target="_blank">预览</a></div>`).join('');
+
+  document.getElementById('sch-modal-body').innerHTML=`
+    <div class="step-bar">
+      <div class="step-dot done" onclick="renderStep1()" title="返回第一步" style="cursor:pointer">✓</div>
+      <div class="step-line done"></div>
+      <div class="step-dot active">2</div>
+    </div>
+    <div class="section-title">📢 朋友圈</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>数据类型</label>
+        <select class="form-input" id="f_cdt"><option value="">请选择</option>${cdt}</select>
+      </div>
+      <div class="form-group">
+        <label>是否发红包</label>
+        <select class="form-input" id="f_chb">
+          <option value="">请选择</option>
+          <option value="true" ${md.has_hongbao_circle===true||md.has_hongbao_circle==='true'?'selected':''}>是</option>
+          <option value="false" ${md.has_hongbao_circle===false||md.has_hongbao_circle==='false'?'selected':''}>否</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section-title">📣 官方群</div>
+    <div class="form-group">
+      <label>群名称（顿号分隔，支持批量）</label>
+      <input class="form-input" id="f_ogrps" value="${(md.official_groups||[]).join('、')}" placeholder="如：白鲸官方群1、白鲸官方群2">
+    </div>
+    <div class="form-group">
+      <label>数据类型</label>
+      <select class="form-input" id="f_odt"><option value="">请选择</option>${odt}</select>
+    </div>
+    <div class="form-group">
+      <label>宣传形式（可多选）</label>
+      <div class="checkbox-group" id="f_pf">
+        ${fms.map(f=>`<label class="checkbox-item ${(md.publish_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'publish_forms','${f}')">${f}</label>`).join('')}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>是否发红包</label>
+      <select class="form-input" id="f_ohb">
+        <option value="">请选择</option>
+        <option value="true" ${md.has_hongbao_official===true||md.has_hongbao_official==='true'?'selected':''}>是</option>
+        <option value="false" ${md.has_hongbao_official===false||md.has_hongbao_official==='false'?'selected':''}>否</option>
+      </select>
+    </div>
+
+    <div class="section-title">🌐 行业&地区群</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>群分类</label>
+        <select class="form-input" id="f_igt"><option value="">请选择</option>${igt}</select>
+      </div>
+      <div class="form-group">
+        <label>是否发红包</label>
+        <select class="form-input" id="f_ihb">
+          <option value="">请选择</option>
+          <option value="true" ${md.has_hongbao_industry===true||md.has_hongbao_industry==='true'?'selected':''}>是</option>
+          <option value="false" ${md.has_hongbao_industry===false||md.has_hongbao_industry==='false'?'selected':''}>否</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>宣传形式（可多选）</label>
+      <div class="checkbox-group" id="f_igf">
+        ${fms.map(f=>`<label class="checkbox-item ${(md.industry_group_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'industry_group_forms','${f}')">${f}</label>`).join('')}
+      </div>
+    </div>
+
+    <div class="section-title">📎 合同文件</div>
+    <div class="form-group">
+      <div class="file-upload-area" onclick="document.getElementById('f_files').click()">
+        <div style="font-size:24px;margin-bottom:6px">📁</div>
+        <p style="font-size:12px;color:var(--text-muted)">点击上传文件（支持多文件）</p>
+        <input type="file" id="f_files" style="display:none" multiple onchange="pickFiles(event)">
+      </div>
+      <div id="f_filelist">${existFiles}</div>
+    </div>
+    <div class="form-group">
+      <label>截图要求</label>
+      <input class="form-input" id="f_screenshot" value="${md.screenshot_requirement||''}" placeholder="请输入截图要求说明">
+    </div>
+  `;
+  document.getElementById('sch-next-btn').textContent=editingId?'保存修改 ✓':'提交保存 ✓';
+  document.getElementById('sch-next-btn').onclick=submitSpon;
+}
+
+function renderStep2Exchange() {
+  const ind=opts.industryNeeds.map(d=>`<option value="${d}" ${md.industry_need===d?'selected':''}>${d}</option>`).join('');
+  const reg=opts.regionNeeds.map(d=>`<option value="${d}" ${md.region_need===d?'selected':''}>${d}</option>`).join('');
+
+  document.getElementById('sch-modal-body').innerHTML=`
+    <div class="step-bar">
+      <div class="step-dot done" onclick="renderStep1()" title="返回第一步" style="cursor:pointer">✓</div>
+      <div class="step-line done"></div>
+      <div class="step-dot active">2</div>
+    </div>
+    <div class="section-title">🔄 置换信息</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>我方宣发群数量</label>
+        <input class="form-input" id="f_ourCnt" type="number" min="0" value="${md.our_group_count||''}" placeholder="数量">
+      </div>
+      <div class="form-group">
+        <label>行业需求</label>
+        <select class="form-input" id="f_ind"><option value="">请选择</option>${ind}</select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>地区需求</label>
+        <select class="form-input" id="f_reg"><option value="">请选择</option>${reg}</select>
+      </div>
+      <div class="form-group">
+        <label>对方宣传群数量</label>
+        <input class="form-input" id="f_theirCnt" type="number" min="0" value="${md.their_group_count||''}" placeholder="数量">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>对方宣传覆盖总人数</label>
+        <input class="form-input" id="f_theirPpl" type="number" min="0" value="${md.their_total_people||''}" placeholder="人数">
+      </div>
+      <div class="form-group">
+        <label>我方宣传覆盖总人数</label>
+        <input class="form-input" id="f_ourPpl" type="number" min="0" value="${md.our_total_people||''}" placeholder="人数">
+      </div>
+    </div>
+  `;
+  document.getElementById('sch-next-btn').textContent=editingId?'保存修改 ✓':'提交保存 ✓';
+  document.getElementById('sch-next-btn').onclick=submitExch;
+}
+
+function tck(el, field, value) {
+  el.classList.toggle('checked');
+  if(!Array.isArray(md[field])) md[field]=[];
+  if(el.classList.contains('checked')){ if(!md[field].includes(value)) md[field].push(value); }
+  else md[field]=md[field].filter(v=>v!==value);
+}
+
+function pickFiles(e) {
+  const files=Array.from(e.target.files);
+  pendingFiles=[...pendingFiles,...files];
+  const list=document.getElementById('f_filelist');
+  files.forEach(f=>{
+    const d=document.createElement('div'); d.className='file-item';
+    d.innerHTML=`<span>📄 ${f.name}</span><span style="color:var(--text-muted);font-size:11px">待上传</span>`;
+    list.appendChild(d);
+  });
+}
+
+async function submitSpon() {
+  const officialGroupsRaw=document.getElementById('f_ogrps').value;
+  const og=officialGroupsRaw?officialGroupsRaw.split(/[、,，]/).map(s=>s.trim()).filter(Boolean):[];
+  
+  const existingFiles=Array.isArray(md.contract_files)?md.contract_files:[];
+  const newFiles=pendingFiles.map(f=>({name:f.name,url:URL.createObjectURL(f),size:f.size}));
+  
+  const payload={
+    activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
+    owner:md.owner, date:md.date, time_slot:md.time_slot,
+    circle_data_type:document.getElementById('f_cdt').value,
+    has_hongbao_circle:document.getElementById('f_chb').value==='true',
+    is_circle_push:['noon','afternoon_circle'].includes(md.time_slot),
+    official_groups:JSON.stringify(og),
+    official_group_data_type:document.getElementById('f_odt').value,
+    publish_forms:JSON.stringify(md.publish_forms||[]),
+    has_hongbao_official:document.getElementById('f_ohb').value==='true',
+    industry_region_group:document.getElementById('f_igt').value,
+    industry_group_forms:JSON.stringify(md.industry_group_forms||[]),
+    has_hongbao_industry:document.getElementById('f_ihb').value==='true',
+    contract_files:JSON.stringify([...existingFiles,...newFiles]),
+    screenshot_requirement:document.getElementById('f_screenshot').value,
+    created_by:currentUser.id, updated_at:new Date().toISOString()
+  };
+  await doSubmit(payload);
+}
+
+async function submitExch() {
+  const payload={
+    activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
+    owner:md.owner, date:md.date, time_slot:md.time_slot,
+    our_group_count:parseInt(document.getElementById('f_ourCnt').value)||0,
+    industry_need:document.getElementById('f_ind').value,
+    region_need:document.getElementById('f_reg').value,
+    their_group_count:parseInt(document.getElementById('f_theirCnt').value)||0,
+    their_total_people:parseInt(document.getElementById('f_theirPpl').value)||0,
+    our_total_people:parseInt(document.getElementById('f_ourPpl').value)||0,
+    created_by:currentUser.id, updated_at:new Date().toISOString()
+  };
+  await doSubmit(payload);
+}
+
+async function doSubmit(payload) {
+  showLoading();
+  try {
+    // Rule check for 赞助/商务
+    if(payload.activity_type==='赞助'||payload.activity_type==='商务') {
+      const existing=await api('GET','bj_schedules',`?activity_name=eq.${encodeURIComponent(payload.activity_name)}&activity_type=eq.${encodeURIComponent(payload.activity_type)}`);
+      const others=editingId?existing.filter(e=>e.id!==editingId):existing;
+      
+      if(['noon','afternoon_circle'].includes(payload.time_slot)) {
+        const circlePushes=others.filter(e=>['noon','afternoon_circle'].includes(e.time_slot));
+        if(circlePushes.length>=2){showLoading(false);return toast('朋友圈宣发已达2次上限（每个活动最多2次）','error');}
+        if(circlePushes.length===1){
+          const diff=Math.abs(new Date(circlePushes[0].date)-new Date(payload.date))/(86400000);
+          if(diff<1){showLoading(false);return toast('朋友圈宣发间隔需至少1天','error');}
+        }
+      }
+    }
+    
+    if(editingId) {
+      await api('PATCH','bj_schedules',`?id=eq.${editingId}`,payload);
+      toast('修改成功','success');
+    } else {
+      payload.created_at=new Date().toISOString();
+      await api('POST','bj_schedules','',payload);
+      toast('新增成功','success');
+    }
+    closeModal('sch-modal'); pendingFiles=[];
+    await refreshCalendar();
+  }catch(e){showLoading(false);toast('保存失败：'+e.message,'error');}
+}
+
+// ===== DETAIL MODAL =====
+async function openDetail(id, e) {
+  if(e) e.stopPropagation();
+  showLoading();
+  try {
+    const data=await api('GET','bj_schedules',`?id=eq.${id}`);
+    if(!data||!data[0]){showLoading(false);return;}
+    const ev=data[0]; showLoading(false);
+    const sm={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
+    const tc={'赞助':'#f59e0b','商务':'#10b981','置换':'#8b5cf6'};
+    const pf=j(ev.publish_forms), igf=j(ev.industry_group_forms), og=j(ev.official_groups), cf=j(ev.contract_files);
+    
+    let b=`<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <div style="flex:1"><div style="font-size:19px;font-weight:800">${ev.activity_name}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${ev.date} · ${sm[ev.time_slot]||ev.time_slot}</div></div>
+      <span style="background:${(tc[ev.activity_type]||'#2563eb')}20;color:${tc[ev.activity_type]||'#2563eb'};padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${ev.activity_type}</span>
+    </div>`;
+    
+    b+=`<div class="detail-section"><h4>基本信息</h4>
+      <div class="detail-row"><span class="detail-label">活动部门</span><span class="detail-value">${ev.department||'-'}</span></div>
+      <div class="detail-row"><span class="detail-label">负责人</span><span class="detail-value">${ev.owner}</span></div>
+    </div>`;
+    
+    if(ev.activity_type==='赞助'||ev.activity_type==='商务') {
+      b+=`<div class="detail-section"><h4>📢 朋友圈</h4>
+        <div class="detail-row"><span class="detail-label">数据类型</span><span class="detail-value">${ev.circle_data_type||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle?'✅ 是':'否'}</span></div>
+      </div>
+      <div class="detail-section"><h4>📣 官方群</h4>
+        <div class="detail-row"><span class="detail-label">群名称</span><span class="detail-value">${og.join('、')||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">数据类型</span><span class="detail-value">${ev.official_group_data_type||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${pf.join('、')||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_official?'✅ 是':'否'}</span></div>
+      </div>
+      <div class="detail-section"><h4>🌐 行业&地区群</h4>
+        <div class="detail-row"><span class="detail-label">群分类</span><span class="detail-value">${ev.industry_region_group||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${igf.join('、')||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_industry?'✅ 是':'否'}</span></div>
+      </div>`;
+      if(ev.screenshot_requirement||cf.length>0) {
+        b+=`<div class="detail-section"><h4>📎 合同及截图</h4>
+          ${ev.screenshot_requirement?`<div class="detail-row"><span class="detail-label">截图要求</span><span class="detail-value">${ev.screenshot_requirement}</span></div>`:''}
+          ${cf.length?`<div class="detail-row"><span class="detail-label">合同文件</span><span class="detail-value">${cf.map(f=>`<a href="${f.url}" target="_blank">📄 ${f.name}</a>`).join('<br>')}</span></div>`:''}
+        </div>`;
+      }
+    } else if(ev.activity_type==='置换') {
+      b+=`<div class="detail-section"><h4>🔄 置换信息</h4>
+        <div class="detail-row"><span class="detail-label">我方宣发群数量</span><span class="detail-value">${ev.our_group_count||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">行业需求</span><span class="detail-value">${ev.industry_need||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">地区需求</span><span class="detail-value">${ev.region_need||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">对方群数量</span><span class="detail-value">${ev.their_group_count||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">对方覆盖人数</span><span class="detail-value">${ev.their_total_people?ev.their_total_people+'人':'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">我方覆盖人数</span><span class="detail-value">${ev.our_total_people?ev.our_total_people+'人':'-'}</span></div>
+      </div>`;
+    }
+    
+    document.getElementById('detail-body').innerHTML=b;
+    if(isAdmin) {
+      document.getElementById('detail-footer').innerHTML=`
+        <button class="btn-modal-cancel" onclick="closeModal('detail-modal')">关闭</button>
+        <button class="btn-modal-danger" onclick="delSchedule(${ev.id})">🗑 删除</button>
+        <button class="btn-modal-next" onclick="closeModal('detail-modal');openEditModal(${ev.id})">✏️ 编辑</button>
+      `;
+    } else {
+      document.getElementById('detail-footer').innerHTML='<button class="btn-modal-cancel" onclick="closeModal(\'detail-modal\')">关闭</button>';
+    }
+    document.getElementById('detail-modal').classList.remove('hidden');
+  }catch(e){showLoading(false);toast('加载失败','error');}
+}
+
+async function delSchedule(id) {
+  if(!confirm('确定删除该排期？')) return;
+  showLoading();
+  try {
+    await api('DELETE','bj_schedules',`?id=eq.${id}`);
+    toast('已删除','success'); closeModal('detail-modal'); await refreshCalendar();
+  }catch(e){showLoading(false);toast('删除失败','error');}
+}
+
+// ===== ADMIN MODAL =====
+let curAdminTab='users';
+
+async function openAdminModal() {
+  document.getElementById('admin-modal').classList.remove('hidden');
+  switchAdminTab('users');
+}
+
+async function switchAdminTab(tab) {
+  curAdminTab=tab;
+  ['users','opts'].forEach(t=>{
+    document.getElementById(`atab-${t}`).className='admin-tab-btn'+(t===tab?' active':'');
+    document.getElementById(`admin-${t==='users'?'users':'opts'}-panel`).className=t===tab?'':'hidden';
+  });
+  if(tab==='users') await loadUsersPanel();
+  else renderOptsPanel();
+}
+
+async function loadUsersPanel() {
+  document.getElementById('admin-users-panel').innerHTML='<div style="color:var(--text-muted);font-size:13px">加载中...</div>';
+  showLoading();
+  try {
+    const users=await api('GET','bj_users','?order=created_at.asc');
+    let h=`<table class="user-table"><thead><tr><th>手机号</th><th>昵称</th><th>角色</th><th>注册时间</th><th>操作</th></tr></thead><tbody>`;
+    users.forEach(u=>{
+      const isRootAdmin=u.phone===ADMIN_PHONE;
+      h+=`<tr><td>${u.phone}</td><td>${u.name||'-'}</td>
+        <td><span class="status-badge ${u.role==='admin'?'status-admin':'status-visitor'}">${u.role==='admin'?'管理员':'游客'}</span></td>
+        <td>${new Date(u.created_at).toLocaleDateString('zh-CN')}</td>
+        <td>${isRootAdmin?'<span style="color:#94a3b8;font-size:12px">超级管理员</span>':
+          u.role==='admin'?`<button style="padding:3px 10px;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-size:12px" onclick="setUserRole('${u.id}','visitor')">降为游客</button>`:
+          `<button style="padding:3px 10px;background:#fef3c7;color:#d97706;border:1px solid #fde68a;border-radius:6px;cursor:pointer;font-size:12px" onclick="setUserRole('${u.id}','admin')">升为管理员</button>`}
+        </td></tr>`;
+    });
+    h+='</tbody></table>';
+    document.getElementById('admin-users-panel').innerHTML=h;
+  }catch(e){ document.getElementById('admin-users-panel').innerHTML='<p style="color:var(--danger)">加载失败</p>'; }
+  showLoading(false);
+}
+
+async function setUserRole(id, role) {
+  if(!confirm(`确定${role==='admin'?'升级为管理员':'降为游客'}？`)) return;
+  showLoading();
+  try {
+    await api('PATCH','bj_users',`?id=eq.${id}`,{role});
+    toast(role==='admin'?'已升级为管理员':'已降为游客','success');
+    await loadUsersPanel();
+  }catch(e){showLoading(false);toast('操作失败','error');}
+}
+
+const OPT_CATS=[
+  {k:'departments',l:'活动部门'},
+  {k:'circleDataTypes',l:'朋友圈 · 数据类型'},
+  {k:'officialGroupDataTypes',l:'官方群 · 数据类型'},
+  {k:'industryRegionGroups',l:'行业&地区群'},
+  {k:'industryNeeds',l:'置换 · 行业需求'},
+  {k:'regionNeeds',l:'置换 · 地区需求'},
+];
+
+function renderOptsPanel() {
+  let h='';
+  OPT_CATS.forEach(cat=>{
+    const items=opts[cat.k]||[];
+    h+=`<div class="option-section">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text)">${cat.l}</div>
+      <div class="option-list" id="olist-${cat.k}">
+        ${items.map(v=>`<div class="option-chip">${v}<button onclick="rmOpt('${cat.k}','${encodeURIComponent(v)}')">×</button></div>`).join('')||'<span style="color:#94a3b8;font-size:12px">暂无选项</span>'}
+      </div>
+      <div class="option-add-row">
+        <input class="option-add-input" id="oinput-${cat.k}" placeholder="输入新选项（支持顿号分隔批量添加）">
+        <button class="btn-add-opt" onclick="addOpts('${cat.k}')">添加</button>
+      </div>
+    </div>`;
+  });
+  document.getElementById('admin-opts-panel').innerHTML=h;
+}
+
+async function addOpts(cat) {
+  const raw=document.getElementById(`oinput-${cat}`).value.trim();
+  if(!raw) return;
+  const vals=raw.includes('、')||raw.includes(',')? raw.split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [raw];
+  showLoading();
+  try {
+    for(const v of vals){ if(!opts[cat].includes(v)) await api('POST','bj_options','',{category:cat,value:v,created_at:new Date().toISOString()}); }
+    await loadOpts(); document.getElementById(`oinput-${cat}`).value='';
+    toast('添加成功','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('添加失败','error');}
+}
+
+async function rmOpt(cat, encodedVal) {
+  const val=decodeURIComponent(encodedVal);
+  if(!confirm(`确定删除"${val}"？`)) return;
+  showLoading();
+  try {
+    const data=await api('GET','bj_options',`?category=eq.${cat}&value=eq.${encodeURIComponent(val)}`);
+    if(data.length) await api('DELETE','bj_options',`?id=eq.${data[0].id}`);
+    await loadOpts(); toast('已删除','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('删除失败','error');}
+}
+
+function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+
+// ===== KEYBOARD =====
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m=>m.classList.add('hidden'));
+  if(e.key==='Enter'&&!document.getElementById('auth-page').classList.contains('hidden')){
+    if(!document.getElementById('login-form').classList.contains('hidden')) doLogin();
+    else doRegister();
+  }
+});
+</script>
+</body>
+</html>
