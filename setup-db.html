@@ -2,8 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>数据库初始化工具</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<title>数据库初始化工具 v2</title>
 <style>
 body{font-family:sans-serif;padding:20px;background:#f0f4ff;}
 .card{background:white;padding:24px;border-radius:12px;max-width:700px;margin:auto;box-shadow:0 4px 16px rgba(0,0,0,0.1);}
@@ -21,8 +20,8 @@ pre{background:#1e293b;color:#f1f5f9;padding:16px;border-radius:8px;font-size:12
 </head>
 <body>
 <div class="card">
-<h2>🔧 白鲸社群排期表 - 数据库初始化</h2>
-<p style="color:#64748b;font-size:14px;">此工具用于在Supabase中创建所需的数据库表结构。请先在Supabase控制台执行以下SQL。</p>
+<h2>🔧 白鲸社群排期表 v2 - 数据库初始化</h2>
+<p style="color:#64748b;font-size:14px;">升级后需重新执行此 SQL（会重建排期表），请确保已备份数据后再执行。</p>
 
 <h3 style="font-size:15px;margin-top:20px;">📋 需要执行的 SQL 语句：</h3>
 <pre id="sql-output"></pre>
@@ -40,7 +39,13 @@ pre{background:#1e293b;color:#f1f5f9;padding:16px;border-radius:8px;font-size:12
 const SUPABASE_URL = 'https://puyqbvyxwecaiuizwmhx.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1eXFidnl4d2VjYWl1aXp3bWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwODY4NTUsImV4cCI6MjA5NDY2Mjg1NX0.myNB1KMAW8oMhxBt80nqwO0OutmbrA43WudSqA_qAgw';
 
-const SQL = `-- 1. 用户表
+const SQL = `-- ============================================================
+-- 白鲸社群排期表 v2 - 数据库初始化脚本
+-- 执行方式：复制全部 → 粘贴到 Supabase SQL 编辑器 → 执行
+-- 注意：会重建 bj_schedules 表，已有数据会丢失！
+-- ============================================================
+
+-- 1. 用户表
 CREATE TABLE IF NOT EXISTS bj_users (
   id BIGSERIAL PRIMARY KEY,
   phone TEXT UNIQUE NOT NULL,
@@ -58,8 +63,9 @@ CREATE TABLE IF NOT EXISTS bj_options (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. 排期表
-CREATE TABLE IF NOT EXISTS bj_schedules (
+-- 3. 排期表（字段升级：支持多选）
+DROP TABLE IF EXISTS bj_schedules;
+CREATE TABLE bj_schedules (
   id BIGSERIAL PRIMARY KEY,
   activity_name TEXT NOT NULL,
   department TEXT,
@@ -67,17 +73,17 @@ CREATE TABLE IF NOT EXISTS bj_schedules (
   owner TEXT NOT NULL,
   date DATE NOT NULL,
   time_slot TEXT NOT NULL,
-  -- 朋友圈字段
-  circle_data_type TEXT,
+  -- 朋友圈：客服号多选
+  circle_service_accounts JSONB DEFAULT '[]',
   has_hongbao_circle BOOLEAN DEFAULT FALSE,
   is_circle_push BOOLEAN DEFAULT FALSE,
-  -- 官方群字段
-  official_groups JSONB DEFAULT '[]',
+  -- 官方群：群分类多选
+  official_group_categories JSONB DEFAULT '[]',
   official_group_data_type TEXT,
   publish_forms JSONB DEFAULT '[]',
   has_hongbao_official BOOLEAN DEFAULT FALSE,
-  -- 行业&地区群字段
-  industry_region_group TEXT,
+  -- 行业&地区群：群分类多选
+  industry_group_categories JSONB DEFAULT '[]',
   industry_group_forms JSONB DEFAULT '[]',
   has_hongbao_industry BOOLEAN DEFAULT FALSE,
   -- 合同文件
@@ -96,15 +102,30 @@ CREATE TABLE IF NOT EXISTS bj_schedules (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. 开启 Row Level Security（宽松策略，由应用层控制）
+-- 4. 开启 Row Level Security（宽松策略，应用层控制）
 ALTER TABLE bj_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bj_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bj_schedules ENABLE ROW LEVEL SECURITY;
 
--- 5. 创建允许所有操作的策略（应用层控制权限）
+-- 5. 创建允许所有操作的策略
 CREATE POLICY "allow_all_users" ON bj_users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_options" ON bj_options FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all_schedules" ON bj_schedules FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "allow_all_schedules" ON bj_schedules FOR ALL USING (true) WITH CHECK (true);
+
+-- 6. 初始化选项数据（v2 新增类别）
+INSERT INTO bj_options (category, value) VALUES
+  ('circleServiceAccounts', '白鲸客服1号'),
+  ('circleServiceAccounts', '白鲸客服2号'),
+  ('circleServiceAccounts', '白鲸客服3号'),
+  ('officialGroupCategories', '官方大群'),
+  ('officialGroupCategories', '官方行业群'),
+  ('officialGroupCategories', '官方地区群'),
+  ('industryGroupCategories', '行业A群'),
+  ('industryGroupCategories', '行业B群'),
+  ('industryGroupCategories', '行业C群'),
+  ('industryGroupCategories', '地区X群'),
+  ('industryGroupCategories', '地区Y群')
+ON CONFLICT DO NOTHING;`;
 
 document.getElementById('sql-output').textContent = SQL;
 
@@ -115,80 +136,55 @@ function copySql() {
 async function testConnection() {
   showStatus('正在测试连接...','info');
   let html = '';
-  // 1. 测试 Supabase REST API 可达性（通过请求 bj_users 表）
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/bj_users?limit=1`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json'
-      }
+    const r = await fetch(SUPABASE_URL + '/rest/v1/bj_users?limit=1', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }
     });
     const body = await r.text();
     if(r.ok) {
-      html += `✅ <b>连接成功</b>：Supabase 服务正常，状态码 ${r.status}<br>`;
-      html += `✅ <b>bj_users 表</b>：存在且可访问<br>`;
-    } else if(r.status === 404 || body.includes('does not exist')) {
-      html += `✅ <b>Supabase 连接正常</b>（状态 ${r.status}）<br>`;
-      html += `⚠️ <b>bj_users 表不存在</b>，请先执行上方 SQL 建表语句<br>`;
-    } else if(r.status === 401 || r.status === 403) {
-      html += `✅ <b>Supabase 服务可达</b>（状态 ${r.status}）<br>`;
-      html += `⚠️ <b>权限不足</b>：RLS 策略可能未配置，请检查是否执行了建表中的 Policy 语句<br>`;
+      html += '✅ <b>连接成功</b>：Supabase 服务正常<br>';
+    } else if(r.status===404 || body.includes('does not exist')) {
+      html += '⚠️ <b>bj_users 表不存在</b>，请执行上方 SQL<br>';
+    } else if(r.status===401 || r.status===403) {
+      html += '⚠️ <b>权限不足</b>（'+r.status+'），请检查 RLS Policy<br>';
     } else {
-      html += `⚠️ <b>连接异常</b>，状态码：${r.status}<br>`;
-      html += `响应内容：${body.substring(0,200)}<br>`;
+      html += '⚠️ 状态：'+r.status+'<br>'+body.substring(0,200)+'<br>';
     }
   } catch(e) {
-    html += `❌ <b>网络连接失败</b>：${e.message}<br>`;
-    html += `请检查网络是否正常，或 Supabase Project URL 是否正确<br>`;
+    html += '❌ 网络失败：'+e.message+'<br>';
   }
-  // 2. 检查所有三张表
-  html += '<br><b>各表状态检查：</b><br>';
-  const tables = ['bj_users','bj_options','bj_schedules'];
-  for(const t of tables) {
+  const tables=['bj_users','bj_options','bj_schedules'];
+  html += '<br><b>各表状态：</b><br>';
+  for(const t of tables){
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?limit=1`, {
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' }
+      const r=await fetch(SUPABASE_URL+'/rest/v1/'+t+'?limit=1',{
+        headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+SUPABASE_ANON_KEY,'Content-Type':'application/json'}
       });
-      const body = await r.text();
-      if(r.ok) {
-        html += `✅ ${t}<br>`;
-      } else if(r.status === 404 || body.includes('does not exist')) {
-        html += `❌ ${t} - 表不存在，请执行 SQL 建表<br>`;
-      } else if(r.status === 401 || r.status === 403) {
-        html += `⚠️ ${t} - 权限被拒绝 (${r.status})，请添加 RLS Policy<br>`;
-      } else {
-        html += `❌ ${t} - 异常 (${r.status}): ${body.substring(0,100)}<br>`;
-      }
-    } catch(e) {
-      html += `❌ ${t} - 请求错误: ${e.message}<br>`;
-    }
+      const body=await r.text();
+      html += r.ok ? '✅ '+t+'<br>' : (r.status===404?'❌ '+t+' 不存在<br>':'⚠️ '+t+' ('+r.status+')<br>');
+    } catch(e){ html += '❌ '+t+' 错误<br>'; }
   }
-  const hasError = html.includes('❌');
-  const hasWarn = html.includes('⚠️');
-  showStatus(html, hasError ? 'error' : (hasWarn ? 'info' : 'ok'));
+  showStatus(html, html.includes('❌')?'error':'ok');
 }
 
 async function checkTables() {
-  showStatus('正在检查数据库表...','info');
-  const tables = ['bj_users','bj_options','bj_schedules'];
-  let results = [];
-  for(const t of tables) {
+  showStatus('检查中...','info');
+  const tables=['bj_users','bj_options','bj_schedules'];
+  let html='';
+  for(const t of tables){
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?limit=1`, {
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' }
+      const r=await fetch(SUPABASE_URL+'/rest/v1/'+t+'?limit=1',{
+        headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+SUPABASE_ANON_KEY,'Content-Type':'application/json'}
       });
-      if(r.ok) results.push(`✅ ${t} - 存在`);
-      else results.push(`❌ ${t} - 不存在或无权限 (${r.status})`);
-    } catch(e) {
-      results.push(`❌ ${t} - 错误: ${e.message}`);
-    }
+      const body=await r.text();
+      html += r.ok ? '✅ '+t+' - 存在<br>' : '❌ '+t+' - '+body.substring(0,80)+'<br>';
+    } catch(e){ html += '❌ '+t+' - '+e.message+'<br>'; }
   }
-  showStatus(results.join('<br>'), results.every(r=>r.startsWith('✅')) ? 'ok' : 'error');
+  showStatus(html, html.includes('❌')?'error':'ok');
 }
 
 function showStatus(msg, type) {
-  document.getElementById('status-area').innerHTML = `<div class="status ${type}">${msg}</div>`;
+  document.getElementById('status-area').innerHTML='<div class="status '+type+'">'+msg+'</div>';
 }
 </script>
 </body>
