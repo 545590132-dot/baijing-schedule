@@ -94,6 +94,8 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-footer-hint{text-align:center;padding:8px;font-size:11px;color:#94a3b8;background:#f8faff;border-top:1px solid var(--border)}
 .cal-date-cell.holiday .date-num{background:#fde68a!important;color:#92400e!important}
 .cal-date-cell.holiday{border-left-color:#f59e0b!important}
+.cal-date-cell.weekend .date-num{background:#f1f5f9!important;color:#6b7280!important}
+.cal-date-cell.weekend{border-left-color:#9ca3af!important}
 .holiday-tip{font-size:10px;color:#d97706;display:block;margin-top:2px}
 
 /* MODAL */
@@ -264,6 +266,9 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
     <div class="cal-nav-title" id="cal-nav-title"></div>
     <button class="cal-nav-btn" onclick="changeWeek(1)">›</button>
     <button class="cal-today-btn" onclick="goToday()">今天</button>
+    <div style="display:flex;align-items:center;margin-left:8px">
+      <input id="cal-search" class="form-input" style="width:160px;padding:6px 10px;font-size:12px" placeholder="🔍 搜索排期内容..." value="" oninput="onSearchInput(this.value)">
+    </div>
   </div>
 
   <div class="calendar-wrap">
@@ -340,6 +345,7 @@ let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], indu
 let editingId = null;
 let md = {}; // modal data
 let pendingFiles = [];
+let searchQuery = '';
 
 // ===== UTILS =====
 function getWeekStart(d) {
@@ -501,26 +507,43 @@ const HOLIDAYS_2026 = {
   '10-05':'国庆','10-06':'国庆','10-07':'国庆','10-08':'国庆',
 };
 
-function changeWeek(d){ weekStart=addDays(weekStart,d*7); refreshCalendar(); }
-function goToday(){ weekStart=getWeekStart(new Date()); refreshCalendar(); }
+function changeWeek(d){ weekStart=addDays(weekStart,d*7); searchQuery=''; document.getElementById('cal-search').value=''; refreshCalendar(); }
+function goToday(){ weekStart=getWeekStart(new Date()); searchQuery=''; document.getElementById('cal-search').value=''; refreshCalendar(); }
+
+let _searchTimer=null;
+function onSearchInput(val) {
+  clearTimeout(_searchTimer);
+  _searchTimer=setTimeout(()=>{
+    searchQuery=val.trim();
+    refreshCalendar();
+  }, 400);
+}
 
 async function refreshCalendar() {
   showLoading();
   try {
-    const end=addDays(weekStart,6);
-    const data=await api('GET','bj_schedules',`?date=gte.${fmtDate(weekStart)}&date=lte.${fmtDate(end)}&order=date.asc,time_slot.asc`);
+    let data;
+    if(searchQuery) {
+      const q=encodeURIComponent(searchQuery);
+      data=await api('GET','bj_schedules',`?or=(activity_name.ilike.%25${q}%25,department.ilike.%25${q}%25,owner.ilike.%25${q}%25,activity_type.ilike.%25${q}%25)&order=date.asc,time_slot.asc`);
+    } else {
+      const end=addDays(weekStart,6);
+      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(weekStart)}&date=lte.${fmtDate(end)}&order=date.asc,time_slot.asc`);
+    }
     scheduleMap={};
     data.forEach(item=>{ const k=`${item.date}_${item.time_slot}`; if(!scheduleMap[k]) scheduleMap[k]=[]; scheduleMap[k].push(item); });
-    renderCalendar();
-  }catch(e){ toast('加载数据失败','error'); console.error(e); }
+  } catch(e){ toast('加载数据失败','error'); console.error(e); scheduleMap={}; }
   showLoading(false);
+  renderCalendar();
 }
 
 function renderCalendar() {
   const end=addDays(weekStart,6);
   const y1=weekStart.getFullYear(), m1=weekStart.getMonth()+1, d1=weekStart.getDate();
   const y2=end.getFullYear(), m2=end.getMonth()+1, d2=end.getDate();
-  document.getElementById('cal-nav-title').textContent=`${y1}年${m1}月${d1}日 — ${m2}月${d2}日`;
+  document.getElementById('cal-nav-title').textContent=searchQuery
+    ? `🔍 搜索结果：${searchQuery}`
+    : `${y1}年${m1}月${d1}日 — ${m2}月${d2}日`;
 
   let h='';
   // Header
@@ -533,9 +556,13 @@ function renderCalendar() {
     const d=addDays(weekStart,i); const ds=fmtDate(d);
     const td=isToday(d)?' today':'';
     const hm=HOLIDAYS_2026[ds.slice(5)];
-    const hl=hm?' holiday':'';
-    const title=hm?' title="'+hm+'"':'';
-    h+=`<div class="cal-date-cell${hl}"${title}><span class="date-num${td}">${d.getDate()}</span>${hm?'<span class="holiday-tip">'+hm+'</span>':''}</div>`;
+    // 判断是否周末（周六/周日）且不是法定节假日
+    const dow=d.getDay();
+    const isWeekend=(dow===0||dow===6);
+    const isWeekendDay=isWeekend&&!hm;
+    const hl=hm?' holiday':isWeekendDay?' weekend':'';
+    const title=hm?hm+(isWeekendDay?'（周末调休）':''):isWeekendDay?'周末':'';
+    h+=`<div class="cal-date-cell${hl}"${title?' title="'+title+'"':''}><span class="date-num${td}">${d.getDate()}</span>${hm?'<span class="holiday-tip">'+hm+'</span>':isWeekendDay?'<span class="holiday-tip" style="color:#6b7280">周末</span>':''}</div>`;
   }
   h+='</div><div class="cal-body">';
   // Rows
@@ -554,7 +581,11 @@ function renderCalendar() {
     h+='</div>';
   });
   h+='</div>';
-  if(isSuperAdmin) h+='<div class="cal-footer-hint">💡 双击单元格可快速新增排期 · 点击卡片查看详情</div>';
+  if(searchQuery) {
+    h+='<div class="cal-footer-hint">🔍 搜索模式：显示所有匹配"<b>'+searchQuery+'</b>"的排期 · <a href="#" onclick="goToday();return false" style="color:var(--primary)">清除搜索</a></div>';
+  } else if(isSuperAdmin) {
+    h+='<div class="cal-footer-hint">💡 双击单元格可快速新增排期 · 点击卡片查看详情</div>';
+  }
   document.getElementById('calendar').innerHTML=h;
 }
 
@@ -583,6 +614,10 @@ function dbClick(date, slot, e) {
 // ===== SCHEDULE MODAL =====
 function openAddModal(preDate='', preSlot='') {
   if(!isAdmin) return toast('管理员可操作','error');
+  // 确保 opts 已加载
+  if(!opts.departments||opts.departments.length===0){
+    toast('选项加载中，请稍后重试','error'); return;
+  }
   editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot, time_slot:preSlot};
   document.getElementById('sch-modal-title').textContent='新增排期';
   renderStep1(); document.getElementById('sch-modal').classList.remove('hidden');
@@ -590,10 +625,11 @@ function openAddModal(preDate='', preSlot='') {
 
 async function openEditModal(id) {
   if(!isAdmin) return toast('管理员可操作','error');
+  if(!document.getElementById('sch-modal-body')){ toast('页面错误，请刷新','error'); return; }
   showLoading();
   try {
     const data=await api('GET','bj_schedules',`?id=eq.${id}`);
-    if(!data||!data[0]){showLoading(false);return toast('数据不存在','error');}
+    if(!data||!data[0]){showLoading(false);toast('数据不存在','error');return;}
     editingId=id; pendingFiles=[]; md={...data[0]};
     md.publish_forms=j(md.publish_forms); md.industry_group_forms=j(md.industry_group_forms);
     md.contract_files=j(md.contract_files||'[]');
@@ -1018,10 +1054,12 @@ async function doSubmit(payload) {
 // ===== DETAIL MODAL =====
 async function openDetail(id, e) {
   if(e) e.stopPropagation();
+  const db=document.getElementById('detail-body');
+  if(!db){ toast('页面错误，请刷新','error'); return; }
   showLoading();
   try {
     const data=await api('GET','bj_schedules',`?id=eq.${id}`);
-    if(!data||!data[0]){showLoading(false);return;}
+    if(!data||!data[0]){showLoading(false);toast('数据不存在','error');return;}
     const ev=data[0]; showLoading(false);
     const sm={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
     const tc={'赞助':'#f59e0b','商务':'#10b981','置换':'#8b5cf6'};
