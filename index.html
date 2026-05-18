@@ -333,7 +333,7 @@ const ADMIN_PASS = 'baijing2026';
 const HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
 
 // ===== STATE =====
-let currentUser = null, isAdmin = false;
+let currentUser = null, isAdmin = false, isSuperAdmin = false;
 let weekStart = getWeekStart(new Date());
 let scheduleMap = {};
 let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], industryRegionGroups:[], industryNeeds:[], regionNeeds:[], circleServiceAccounts:[], officialGroupCategories:[], industryGroupCategories:[] };
@@ -446,18 +446,18 @@ async function doLogin() {
     
     if(phone===ADMIN_PHONE&&pass===ADMIN_PASS) {
       let u=await api('GET','bj_users',`?phone=eq.${phone}`);
-      if(!u.length) { await api('POST','bj_users','',{phone,name:'管理员',password:pass,role:'admin',created_at:new Date().toISOString()}); u=await api('GET','bj_users',`?phone=eq.${phone}`); }
-      else if(u[0].role!=='admin') { await api('PATCH','bj_users',`?id=eq.${u[0].id}`,{role:'admin'}); u[0].role='admin'; }
-      currentUser=u[0]; isAdmin=true; showLoading(false); enterApp(); return;
+      if(!u.length) { await api('POST','bj_users','',{phone,name:'管理员',password:pass,role:'super_admin',created_at:new Date().toISOString()}); u=await api('GET','bj_users',`?phone=eq.${phone}`); }
+      else if(u[0].role!=='super_admin'&&u[0].role!=='admin') { await api('PATCH','bj_users',`?id=eq.${u[0].id}`,{role:'super_admin'}); u[0].role='super_admin'; }
+      currentUser=u[0]; isAdmin=true; isSuperAdmin=true; showLoading(false); enterApp(); return;
     }
     const users=await api('GET','bj_users',`?phone=eq.${phone}&password=eq.${pass}`);
     if(!users.length){showLoading(false);return showAuthErr('账号或密码错误');}
-    currentUser=users[0]; isAdmin=currentUser.role==='admin'; showLoading(false); enterApp();
+    currentUser=users[0]; isAdmin=currentUser.role==='admin'||currentUser.role==='super_admin'; isSuperAdmin=currentUser.role==='super_admin'; showLoading(false); enterApp();
   }catch(e){showLoading(false);showAuthErr('登录失败：'+e.message+'（'+(e.stack||'').split('\n')[1]+'）');}
 }
 
 function doLogout() {
-  currentUser=null; isAdmin=false; scheduleMap={}; weekStart=getWeekStart(new Date());
+  currentUser=null; isAdmin=false; isSuperAdmin=false; scheduleMap={}; weekStart=getWeekStart(new Date());
   document.getElementById('auth-page').style.display='flex';
   document.getElementById('app-page').style.display='none';
   document.getElementById('login-phone').value=''; document.getElementById('login-pass').value='';
@@ -468,9 +468,9 @@ async function enterApp() {
   document.getElementById('app-page').style.display='flex';
   document.getElementById('user-name-disp').textContent=currentUser.name||currentUser.phone;
   const rb=document.getElementById('user-role-badge');
-  rb.textContent=isAdmin?'管理员':'游客'; rb.className='user-role'+(isAdmin?' admin':'');
+  rb.textContent=isSuperAdmin?'超级管理员':isAdmin?'管理员':'游客'; rb.className='user-role'+(isAdmin?' admin':'');
   document.getElementById('btn-add-sch').className='btn-sm btn-add'+(isAdmin?'':' hidden');
-  document.getElementById('btn-admin').className='btn-sm btn-manage'+(isAdmin?'':' hidden');
+  document.getElementById('btn-admin').className='btn-sm btn-manage'+(isSuperAdmin?'':' hidden');
   await loadOpts();
   await refreshCalendar();
 }
@@ -544,8 +544,8 @@ function renderCalendar() {
     for(let i=0;i<7;i++){
       const d=addDays(weekStart,i); const ds=fmtDate(d);
       const tc=isToday(d)?' today-col':'';
-      const ac=isAdmin?' admin-cell':'';
-      const dbl=isAdmin?` ondblclick="dbClick('${ds}','${slot.k}',event)"`:'';
+      const ac=isSuperAdmin?' admin-cell':'';
+      const dbl=isSuperAdmin?` ondblclick="dbClick('${ds}','${slot.k}',event)"`:'';
       h+=`<div class="cal-cell${tc}${ac}"${dbl}>`;
       (scheduleMap[`${ds}_${slot.k}`]||[]).forEach(ev=>h+=renderCard(ev));
       if(isAdmin) h+='<div class="cell-add-hint">＋</div>';
@@ -554,7 +554,7 @@ function renderCalendar() {
     h+='</div>';
   });
   h+='</div>';
-  if(isAdmin) h+='<div class="cal-footer-hint">💡 双击单元格可快速新增排期 · 点击卡片查看详情</div>';
+  if(isSuperAdmin) h+='<div class="cal-footer-hint">💡 双击单元格可快速新增排期 · 点击卡片查看详情</div>';
   document.getElementById('calendar').innerHTML=h;
 }
 
@@ -582,14 +582,14 @@ function dbClick(date, slot, e) {
 
 // ===== SCHEDULE MODAL =====
 function openAddModal(preDate='', preSlot='') {
-  if(!isAdmin) return toast('只有管理员可操作','error');
+  if(!isAdmin) return toast('管理员可操作','error');
   editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot, time_slot:preSlot};
   document.getElementById('sch-modal-title').textContent='新增排期';
   renderStep1(); document.getElementById('sch-modal').classList.remove('hidden');
 }
 
 async function openEditModal(id) {
-  if(!isAdmin) return toast('只有管理员可操作','error');
+  if(!isAdmin) return toast('管理员可操作','error');
   showLoading();
   try {
     const data=await api('GET','bj_schedules',`?id=eq.${id}`);
@@ -731,6 +731,10 @@ function renderStep2Spon() {
       <div class="step-dot active">2</div>
     </div>
 
+    <div style="margin-bottom:14px">
+      <button style="padding:5px 14px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-muted)" onclick="renderStep1()">← 返回上一步</button>
+    </div>
+
     <div class="section-title">📢 朋友圈</div>
     <div class="form-group">
       <label>客服号（可多选，默认全选）</label>
@@ -818,6 +822,11 @@ function renderStep2Exchange() {
       <div class="step-line done"></div>
       <div class="step-dot active">2</div>
     </div>
+
+    <div style="margin-bottom:14px">
+      <button style="padding:5px 14px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-muted)" onclick="renderStep1()">← 返回上一步</button>
+    </div>
+
     <div class="section-title">🔄 置换信息</div>
     <div class="form-row">
       <div class="form-group">
@@ -873,6 +882,13 @@ function pickFiles(e) {
 }
 
 async function submitSpon() {
+  // 商务类型：合同文件必填
+  if(md.activity_type==='商务') {
+    const hasExisting = Array.isArray(md.contract_files) && md.contract_files.length > 0;
+    if(!hasExisting && pendingFiles.length === 0) {
+      return toast('商务类型需上传合同文件','error');
+    }
+  }
   // 收集 Step2 字段，存入 md，再调用批量提交
   md.service_accounts = md.service_accounts||[];
   md.og_cats = md.og_cats||[];
@@ -1058,12 +1074,14 @@ async function openDetail(id, e) {
     }
     
     document.getElementById('detail-body').innerHTML=b;
-    if(isAdmin) {
+    if(isSuperAdmin) {
       document.getElementById('detail-footer').innerHTML=`
         <button class="btn-modal-cancel" onclick="closeModal('detail-modal')">关闭</button>
         <button class="btn-modal-danger" onclick="delSchedule(${ev.id})">🗑 删除</button>
         <button class="btn-modal-next" onclick="closeModal('detail-modal');openEditModal(${ev.id})">✏️ 编辑</button>
       `;
+    } else if(isAdmin) {
+      document.getElementById('detail-footer').innerHTML='<button class="btn-modal-cancel" onclick="closeModal(\'detail-modal\')">关闭</button>';
     } else {
       document.getElementById('detail-footer').innerHTML='<button class="btn-modal-cancel" onclick="closeModal(\'detail-modal\')">关闭</button>';
     }
@@ -1106,11 +1124,14 @@ async function loadUsersPanel() {
     let h=`<table class="user-table"><thead><tr><th>手机号</th><th>昵称</th><th>角色</th><th>注册时间</th><th>操作</th></tr></thead><tbody>`;
     users.forEach(u=>{
       const isRootAdmin=u.phone===ADMIN_PHONE;
+      const roleLabel=u.role==='super_admin'?'超级管理员':u.role==='admin'?'管理员':'游客';
+      const roleClass=u.role==='admin'||u.role==='super_admin'?'status-admin':'status-visitor';
       h+=`<tr><td>${u.phone}</td><td>${u.name||'-'}</td>
-        <td><span class="status-badge ${u.role==='admin'?'status-admin':'status-visitor'}">${u.role==='admin'?'管理员':'游客'}</span></td>
+        <td><span class="status-badge ${roleClass}">${roleLabel}</span></td>
         <td>${new Date(u.created_at).toLocaleDateString('zh-CN')}</td>
-        <td>${isRootAdmin?'<span style="color:#94a3b8;font-size:12px">超级管理员</span>':
-          u.role==='admin'?`<button style="padding:3px 10px;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-size:12px" onclick="setUserRole('${u.id}','visitor')">降为游客</button>`:
+        <td>${isRootAdmin?'<span style="color:#94a3b8;font-size:12px">超管（不可修改）</span>':
+          u.role==='super_admin'?`<button style="padding:3px 10px;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-size:12px" onclick="setUserRole('${u.id}','admin')">降为管理员</button>`:
+          u.role==='admin'?`<button style="padding:3px 10px;background:#fef3c7;color:#d97706;border:1px solid #fde68a;border-radius:6px;cursor:pointer;font-size:12px" onclick="setUserRole('${u.id}','super_admin')">升为超管</button><button style="padding:3px 10px;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:12px;margin-left:4px" onclick="setUserRole('${u.id}','visitor')">降为游客</button>`:
           `<button style="padding:3px 10px;background:#fef3c7;color:#d97706;border:1px solid #fde68a;border-radius:6px;cursor:pointer;font-size:12px" onclick="setUserRole('${u.id}','admin')">升为管理员</button>`}
         </td></tr>`;
     });
@@ -1133,12 +1154,12 @@ async function setUserRole(id, role) {
 const OPT_CATS=[
   {k:'departments',l:'活动部门'},
   {k:'circleServiceAccounts',l:'朋友圈 · 客服号'},
-  {k:'officialGroupDataTypes',l:'官方群 · 数据类型'},
+  {k:'officialGroupDataTypes',l:'官方群'},
   {k:'officialGroupCategories',l:'官方群 · 群分类'},
   {k:'industryRegionGroups',l:'行业&地区群'},
   {k:'industryGroupCategories',l:'行业群 · 群分类'},
-  {k:'industryNeeds',l:'置换 · 行业需求'},
-  {k:'regionNeeds',l:'置换 · 地区需求'},
+  {k:'industryNeeds',l:'行业'},
+  {k:'regionNeeds',l:'地区'},
 ];
 
 function renderOptsPanel() {
@@ -1167,6 +1188,7 @@ async function addOpts(cat) {
   try {
     for(const v of vals){ if(!opts[cat].includes(v)) await api('POST','bj_options','',{category:cat,value:v,created_at:new Date().toISOString()}); }
     await loadOpts(); document.getElementById(`oinput-${cat}`).value='';
+    showLoading(false);
     toast('添加成功','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('添加失败','error');}
 }
