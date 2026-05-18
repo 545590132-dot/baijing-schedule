@@ -92,6 +92,9 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cell-add-hint{position:absolute;bottom:3px;right:4px;font-size:16px;color:#cbd5e1;opacity:0;transition:opacity .2s;pointer-events:none;line-height:1}
 .cal-cell.admin-cell:hover .cell-add-hint{opacity:1}
 .cal-footer-hint{text-align:center;padding:8px;font-size:11px;color:#94a3b8;background:#f8faff;border-top:1px solid var(--border)}
+.cal-date-cell.holiday .date-num{background:#fde68a!important;color:#92400e!important}
+.cal-date-cell.holiday{border-left-color:#f59e0b!important}
+.holiday-tip{font-size:10px;color:#d97706;display:block;margin-top:2px}
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
@@ -124,6 +127,13 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .radio-item{display:flex;align-items:center;gap:4px;cursor:pointer;padding:5px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;transition:all .15s;user-select:none}
 .radio-item:hover{border-color:var(--primary)}
 .radio-item.selected{background:#eff6ff;border-color:var(--primary);color:var(--primary);font-weight:500}
+.date-chip-group{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.date-chip{display:flex;flex-direction:column;align-items:center;padding:6px 10px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;min-width:46px;transition:all .2s;background:#fff}
+.date-chip:hover{border-color:#2563eb}
+.date-chip.checked{background:#dcfce7;border-color:#16a34a}
+.chip-day{font-size:10px;color:#94a3b8;font-weight:500}
+.chip-num{font-size:16px;font-weight:700;color:#1e293b}
+.date-chip.checked .chip-num{color:#16a34a}
 .btn-modal-cancel{padding:7px 18px;border:1.5px solid var(--border);background:transparent;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
 .btn-modal-cancel:hover{border-color:var(--primary);color:var(--primary)}
 .btn-modal-submit,.btn-modal-next{padding:7px 22px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
@@ -326,7 +336,7 @@ const HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Conten
 let currentUser = null, isAdmin = false;
 let weekStart = getWeekStart(new Date());
 let scheduleMap = {};
-let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], industryRegionGroups:[], industryNeeds:[], regionNeeds:[] };
+let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], industryRegionGroups:[], industryNeeds:[], regionNeeds:[], circleServiceAccounts:[], officialGroupCategories:[], industryGroupCategories:[] };
 let editingId = null;
 let md = {}; // modal data
 let pendingFiles = [];
@@ -468,15 +478,28 @@ async function enterApp() {
 // ===== OPTIONS =====
 async function loadOpts() {
   try {
-    const data=await api('GET','bj_options','');
-    opts={departments:[],circleDataTypes:[],officialGroupDataTypes:[],industryRegionGroups:[],industryNeeds:[],regionNeeds:[]};
-    data.forEach(o=>{ if(opts[o.category]!==undefined) opts[o.category].push(o.value); });
+  const data=await api('GET','bj_options','');
+  opts={departments:[],circleDataTypes:[],officialGroupDataTypes:[],industryRegionGroups:[],industryNeeds:[],regionNeeds:[],circleServiceAccounts:[],officialGroupCategories:[],industryGroupCategories:[]};
+  data.forEach(o=>{ if(opts[o.category]!==undefined) opts[o.category].push(o.value); });
   }catch(e){ console.warn('load opts fail',e); }
 }
 
 // ===== CALENDAR =====
 const WEEKDAYS=['一','二','三','四','五','六','日'];
 const SLOTS=[{k:'morning',l:'上午\n群推送'},{k:'noon',l:'中午\n发圈'},{k:'afternoon',l:'下午\n群推送'},{k:'afternoon_circle',l:'下午\n发圈'}];
+
+// 2026 年法定节假日（内置数据）
+const HOLIDAYS_2026 = {
+  '01-01':'元旦','01-02':'元旦','01-03':'元旦',
+  '02-15':'春节','02-16':'春节','02-17':'春节','02-18':'春节',
+  '02-19':'春节','02-20':'春节','02-21':'春节','02-22':'春节',
+  '04-04':'清明','04-05':'清明','04-06':'清明',
+  '05-01':'劳动节','05-02':'劳动节','05-03':'劳动节',
+  '06-19':'端午节','06-20':'端午节','06-21':'端午节',
+  '09-25':'中秋节','09-26':'中秋节','09-27':'中秋节',
+  '10-01':'国庆','10-02':'国庆','10-03':'国庆','10-04':'国庆',
+  '10-05':'国庆','10-06':'国庆','10-07':'国庆','10-08':'国庆',
+};
 
 function changeWeek(d){ weekStart=addDays(weekStart,d*7); refreshCalendar(); }
 function goToday(){ weekStart=getWeekStart(new Date()); refreshCalendar(); }
@@ -507,8 +530,12 @@ function renderCalendar() {
   // Dates row
   h+='<div class="cal-dates-row"><div class="cal-date-cell"></div>';
   for(let i=0;i<7;i++){
-    const d=addDays(weekStart,i); const td=isToday(d)?' today':'';
-    h+=`<div class="cal-date-cell"><span class="date-num${td}">${d.getDate()}</span></div>`;
+    const d=addDays(weekStart,i); const ds=fmtDate(d);
+    const td=isToday(d)?' today':'';
+    const hm=HOLIDAYS_2026[ds.slice(5)];
+    const hl=hm?' holiday':'';
+    const title=hm?' title="'+hm+'"':'';
+    h+=`<div class="cal-date-cell${hl}"${title}><span class="date-num${td}">${d.getDate()}</span>${hm?'<span class="holiday-tip">'+hm+'</span>':''}</div>`;
   }
   h+='</div><div class="cal-body">';
   // Rows
@@ -556,7 +583,7 @@ function dbClick(date, slot, e) {
 // ===== SCHEDULE MODAL =====
 function openAddModal(preDate='', preSlot='') {
   if(!isAdmin) return toast('只有管理员可操作','error');
-  editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot};
+  editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot, time_slot:preSlot};
   document.getElementById('sch-modal-title').textContent='新增排期';
   renderStep1(); document.getElementById('sch-modal').classList.remove('hidden');
 }
@@ -569,7 +596,10 @@ async function openEditModal(id) {
     if(!data||!data[0]){showLoading(false);return toast('数据不存在','error');}
     editingId=id; pendingFiles=[]; md={...data[0]};
     md.publish_forms=j(md.publish_forms); md.industry_group_forms=j(md.industry_group_forms);
-    md.official_groups=j(md.official_groups); md.contract_files=j(md.contract_files);
+    md.contract_files=j(md.contract_files||'[]');
+    md.service_accounts=j(md.circle_service_accounts||'[]');
+    md.og_cats=j(md.official_group_categories||'[]');
+    md.ig_cats=j(md.industry_group_categories||'[]');
     document.getElementById('sch-modal-title').textContent='编辑排期';
     showLoading(false); renderStep1(); document.getElementById('sch-modal').classList.remove('hidden');
   }catch(e){showLoading(false);toast('加载失败','error');}
@@ -577,10 +607,24 @@ async function openEditModal(id) {
 
 function renderStep1() {
   const slotLabels={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
-  const curSlot=md.time_slot||md.slot||'';
+  const curSlots=(md.slots||(md.time_slot?[md.time_slot]:[]));
+  const curDates=(md.dates||(md.date?[md.date]:[]));
   const curType=md.activity_type||'';
   const deptOpts=opts.departments.map(d=>`<option value="${d}" ${md.department===d?'selected':''}>${d}</option>`).join('');
-  
+
+  // 当前周的7天日期 checkbox
+  const weekChips=[];
+  for(let i=0;i<7;i++){
+    const d=addDays(weekStart,i);
+    const ds=fmtDate(d);
+    const wday=['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+    const isChk=curDates.includes(ds);
+    weekChips.push(`<label class="date-chip${isChk?' checked':''}" onclick="toggleDate(this,'${ds}')">
+      <input type="checkbox" style="display:none" ${isChk?'checked':''}>
+      <span class="chip-day">${wday}</span><span class="chip-num">${d.getDate()}</span>
+    </label>`);
+  }
+
   document.getElementById('sch-modal-body').innerHTML=`
     <div class="step-bar">
       <div class="step-dot active">1</div>
@@ -594,9 +638,7 @@ function renderStep1() {
     <div class="form-row">
       <div class="form-group">
         <label class="required">活动部门</label>
-        <select class="form-input" id="f_dept">
-          <option value="">请选择</option>${deptOpts}
-        </select>
+        <select class="form-input" id="f_dept"><option value="">请选择</option>${deptOpts}</select>
       </div>
       <div class="form-group">
         <label class="required">活动类型</label>
@@ -606,20 +648,19 @@ function renderStep1() {
         </select>
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="required">负责人</label>
-        <input class="form-input" id="f_owner" value="${md.owner||''}" placeholder="姓名">
-      </div>
-      <div class="form-group">
-        <label class="required">宣发日期</label>
-        <input class="form-input" id="f_date" type="date" value="${md.date||''}">
-      </div>
+    <div class="form-group">
+      <label class="required">负责人</label>
+      <input class="form-input" id="f_owner" value="${md.owner||''}" placeholder="姓名">
     </div>
     <div class="form-group">
-      <label class="required">宣发时段</label>
-      <div class="radio-group" id="f_slots">
-        ${Object.entries(slotLabels).map(([k,l])=>`<label class="radio-item ${curSlot===k?'selected':''}" data-slot="${k}" onclick="selSlot(this)">${l}</label>`).join('')}
+      <label class="required">宣发日期（可多选）</label>
+      <div class="date-chip-group" id="f_dates">${weekChips.join('')}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 点击选中/取消，绿色表示已选</div>
+    </div>
+    <div class="form-group">
+      <label class="required">宣发时段（可多选）</label>
+      <div class="checkbox-group" id="f_slots">
+        ${Object.entries(slotLabels).map(([k,l])=>`<label class="checkbox-item ${curSlots.includes(k)?'checked':''}" onclick="toggleSlot(this,'${k}')">${l}</label>`).join('')}
       </div>
     </div>
     <div id="type-tip"></div>
@@ -629,17 +670,18 @@ function renderStep1() {
   updateTypeTip();
 }
 
-function updateTypeTip() {
-  const t=document.getElementById('f_type').value;
-  const el=document.getElementById('type-tip');
-  if(t==='置换') el.innerHTML='<div class="constraint-tip">⚠️ 置换类型：不适用标准推送排期规则，直接填写置换信息。</div>';
-  else if(t==='赞助'||t==='商务') el.innerHTML='<div class="constraint-tip">📋 规则：朋友圈最多2次（间隔≥1天），官方群1次，行业&地区群1次。</div>';
-  else el.innerHTML='';
+function toggleDate(el, ds) {
+  const input=el.querySelector('input');
+  const checked=!input.checked;
+  input.checked=checked;
+  el.className='date-chip'+(checked?' checked':'');
 }
 
-function selSlot(el) {
-  document.querySelectorAll('#f_slots .radio-item').forEach(x=>x.classList.remove('selected'));
-  el.classList.add('selected');
+function toggleSlot(el, k) {
+  const input=el.querySelector('input');
+  const checked=!input.checked;
+  input.checked=checked;
+  el.className='checkbox-item'+(checked?' checked':'');
 }
 
 function step1Next() {
@@ -647,12 +689,17 @@ function step1Next() {
   const dept=document.getElementById('f_dept').value;
   const type=document.getElementById('f_type').value;
   const owner=document.getElementById('f_owner').value.trim();
-  const date=document.getElementById('f_date').value;
-  const slotEl=document.querySelector('#f_slots .radio-item.selected');
-  if(!name||!dept||!type||!owner||!date) return toast('请填写所有必填项','error');
-  if(!slotEl) return toast('请选择宣发时段','error');
+  // 收集选中的日期
+  const dateEls=document.querySelectorAll('#f_dates .date-chip input:checked');
+  const dates=Array.from(dateEls).map(el=>el.closest('.date-chip').getAttribute('onclick').match(/'([^']+)'/)[1]);
+  // 收集选中的时段
+  const slotEls=document.querySelectorAll('#f_slots .checkbox-item.checked');
+  const slots=Array.from(slotEls).map(el=>el.getAttribute('onclick').match(/'([^']+)'/)[1]);
+  if(!name||!dept||!type||!owner) return toast('请填写所有必填项','error');
+  if(!dates.length) return toast('请至少选择一天','error');
+  if(!slots.length) return toast('请至少选择一个时段','error');
   md.activity_name=name; md.department=dept; md.activity_type=type;
-  md.owner=owner; md.date=date; md.time_slot=slotEl.dataset.slot;
+  md.owner=owner; md.dates=dates; md.slots=slots;
   document.getElementById('sd2').className='step-dot active';
   document.getElementById('sl1').className='step-line done';
   if(type==='置换') renderStep2Exchange(); else renderStep2Spon();
@@ -661,14 +708,20 @@ function step1Next() {
 function renderStep2Spon() {
   if(!Array.isArray(md.publish_forms)) md.publish_forms=j(md.publish_forms);
   if(!Array.isArray(md.industry_group_forms)) md.industry_group_forms=j(md.industry_group_forms);
-  if(!Array.isArray(md.official_groups)) md.official_groups=j(md.official_groups);
   if(!Array.isArray(md.contract_files)) md.contract_files=j(md.contract_files);
+  if(!Array.isArray(md.service_accounts)) md.service_accounts=j(md.circle_service_accounts||'[]');
+  if(!Array.isArray(md.og_cats)) md.og_cats=j(md.official_group_categories||'[]');
+  if(!Array.isArray(md.ig_cats)) md.ig_cats=j(md.industry_group_categories||'[]');
 
-  const cdt=opts.circleDataTypes.map(d=>`<option value="${d}" ${md.circle_data_type===d?'selected':''}>${d}</option>`).join('');
-  const odt=opts.officialGroupDataTypes.map(d=>`<option value="${d}" ${md.official_group_data_type===d?'selected':''}>${d}</option>`).join('');
-  const igt=opts.industryRegionGroups.map(d=>`<option value="${d}" ${md.industry_region_group===d?'selected':''}>${d}</option>`).join('');
   const fms=['普通群发','@所有人','群置顶'];
-
+  // 客服号（朋友圈）- 默认全选
+  const allSA=opts.circleServiceAccounts||[];
+  if(md.service_accounts.length===0) md.service_accounts=[...allSA];
+  const saHtml=allSA.map(v=>`<label class="checkbox-item ${md.service_accounts.includes(v)?'checked':''}" onclick="tck(this,'service_accounts','${v}')">${v}</label>`).join('');
+  // 官方群分类
+  const ogHtml=(opts.officialGroupCategories||[]).map(v=>`<label class="checkbox-item ${md.og_cats.includes(v)?'checked':''}" onclick="tck(this,'og_cats','${v}')">${v}</label>`).join('');
+  // 行业群分类
+  const igHtml=(opts.industryGroupCategories||[]).map(v=>`<label class="checkbox-item ${md.ig_cats.includes(v)?'checked':''}" onclick="tck(this,'ig_cats','${v}')">${v}</label>`).join('');
   const existFiles=(md.contract_files||[]).map(f=>`<div class="file-item"><span>📄 ${f.name}</span><a href="${f.url}" target="_blank">预览</a></div>`).join('');
 
   document.getElementById('sch-modal-body').innerHTML=`
@@ -677,30 +730,30 @@ function renderStep2Spon() {
       <div class="step-line done"></div>
       <div class="step-dot active">2</div>
     </div>
+
     <div class="section-title">📢 朋友圈</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>数据类型</label>
-        <select class="form-input" id="f_cdt"><option value="">请选择</option>${cdt}</select>
-      </div>
-      <div class="form-group">
-        <label>是否发红包</label>
-        <select class="form-input" id="f_chb">
-          <option value="">请选择</option>
-          <option value="true" ${md.has_hongbao_circle===true||md.has_hongbao_circle==='true'?'selected':''}>是</option>
-          <option value="false" ${md.has_hongbao_circle===false||md.has_hongbao_circle==='false'?'selected':''}>否</option>
-        </select>
-      </div>
+    <div class="form-group">
+      <label>客服号（可多选，默认全选）</label>
+      <div class="checkbox-group" id="f_service">${saHtml}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>
+    </div>
+    <div class="form-group">
+      <label>是否发红包</label>
+      <select class="form-input" id="f_chb">
+        <option value="">请选择</option>
+        <option value="true" ${md.has_hongbao_circle===true||md.has_hongbao_circle==='true'?'selected':''}>是</option>
+        <option value="false" ${md.has_hongbao_circle===false||md.has_hongbao_circle==='false'?'selected':''}>否</option>
+      </select>
     </div>
 
     <div class="section-title">📣 官方群</div>
     <div class="form-group">
-      <label>群名称（顿号分隔，支持批量）</label>
-      <input class="form-input" id="f_ogrps" value="${(md.official_groups||[]).join('、')}" placeholder="如：白鲸官方群1、白鲸官方群2">
+      <label>群分类（可多选）</label>
+      <div class="checkbox-group" id="f_ogcats">${ogHtml||'<span style="color:#94a3b8;font-size:12px">暂无选项，请到"管理控制台→选项管理"中添加</span>'}</div>
     </div>
     <div class="form-group">
       <label>数据类型</label>
-      <select class="form-input" id="f_odt"><option value="">请选择</option>${odt}</select>
+      <select class="form-input" id="f_odt"><option value="">请选择</option>${opts.officialGroupDataTypes.map(d=>`<option value="${d}" ${md.official_group_data_type===d?'selected':''}>${d}</option>`).join('')}</select>
     </div>
     <div class="form-group">
       <label>宣传形式（可多选）</label>
@@ -718,25 +771,23 @@ function renderStep2Spon() {
     </div>
 
     <div class="section-title">🌐 行业&地区群</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>群分类</label>
-        <select class="form-input" id="f_igt"><option value="">请选择</option>${igt}</select>
-      </div>
-      <div class="form-group">
-        <label>是否发红包</label>
-        <select class="form-input" id="f_ihb">
-          <option value="">请选择</option>
-          <option value="true" ${md.has_hongbao_industry===true||md.has_hongbao_industry==='true'?'selected':''}>是</option>
-          <option value="false" ${md.has_hongbao_industry===false||md.has_hongbao_industry==='false'?'selected':''}>否</option>
-        </select>
-      </div>
+    <div class="form-group">
+      <label>群分类（可多选）</label>
+      <div class="checkbox-group" id="f_igcats">${igHtml||'<span style="color:#94a3b8;font-size:12px">暂无选项，请到"管理控制台→选项管理"中添加</span>'}</div>
     </div>
     <div class="form-group">
       <label>宣传形式（可多选）</label>
       <div class="checkbox-group" id="f_igf">
         ${fms.map(f=>`<label class="checkbox-item ${(md.industry_group_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'industry_group_forms','${f}')">${f}</label>`).join('')}
       </div>
+    </div>
+    <div class="form-group">
+      <label>是否发红包</label>
+      <select class="form-input" id="f_ihb">
+        <option value="">请选择</option>
+        <option value="true" ${md.has_hongbao_industry===true||md.has_hongbao_industry==='true'?'selected':''}>是</option>
+        <option value="false" ${md.has_hongbao_industry===false||md.has_hongbao_industry==='false'?'selected':''}>否</option>
+      </select>
     </div>
 
     <div class="section-title">📎 合同文件</div>
@@ -822,77 +873,130 @@ function pickFiles(e) {
 }
 
 async function submitSpon() {
-  const officialGroupsRaw=document.getElementById('f_ogrps').value;
-  const og=officialGroupsRaw?officialGroupsRaw.split(/[、,，]/).map(s=>s.trim()).filter(Boolean):[];
-  
+  // 收集 Step2 字段，存入 md，再调用批量提交
+  md.service_accounts = md.service_accounts||[];
+  md.og_cats = md.og_cats||[];
+  md.ig_cats = md.ig_cats||[];
+  md.f_chb = document.getElementById('f_chb').value;
+  md.f_odt = document.getElementById('f_odt').value;
+  md.f_ohb = document.getElementById('f_ohb').value;
+  md.f_ihb = document.getElementById('f_ihb').value;
+  md.f_screenshot = document.getElementById('f_screenshot').value;
   const existingFiles=Array.isArray(md.contract_files)?md.contract_files:[];
   const newFiles=pendingFiles.map(f=>({name:f.name,url:URL.createObjectURL(f),size:f.size}));
-  
-  const payload={
-    activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
-    owner:md.owner, date:md.date, time_slot:md.time_slot,
-    circle_data_type:document.getElementById('f_cdt').value,
-    has_hongbao_circle:document.getElementById('f_chb').value==='true',
-    is_circle_push:['noon','afternoon_circle'].includes(md.time_slot),
-    official_groups:JSON.stringify(og),
-    official_group_data_type:document.getElementById('f_odt').value,
-    publish_forms:JSON.stringify(md.publish_forms||[]),
-    has_hongbao_official:document.getElementById('f_ohb').value==='true',
-    industry_region_group:document.getElementById('f_igt').value,
-    industry_group_forms:JSON.stringify(md.industry_group_forms||[]),
-    has_hongbao_industry:document.getElementById('f_ihb').value==='true',
-    contract_files:JSON.stringify([...existingFiles,...newFiles]),
-    screenshot_requirement:document.getElementById('f_screenshot').value,
-    created_by:currentUser.id, updated_at:new Date().toISOString()
-  };
-  await doSubmit(payload);
+  md._files = [...existingFiles,...newFiles];
+  doBatchSpon();
+}
+
+function doBatchSpon() {
+  const dates = md.dates||[md.date].filter(Boolean);
+  const slots = md.slots||[md.time_slot].filter(Boolean);
+  const total = dates.length * slots.length;
+  if(total > 30) { toast('批量数量不超过30条，请减少选择','error'); return; }
+  let count = 0;
+  showLoading(true);
+  (async () => {
+    try {
+      for(const d of dates) {
+        for(const s of slots) {
+          const payload = {
+            activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
+            owner:md.owner, date:d, time_slot:s,
+            circle_service_accounts:JSON.stringify(md.service_accounts),
+            has_hongbao_circle:md.f_chb==='true',
+            is_circle_push:['noon','afternoon_circle'].includes(s),
+            official_group_categories:JSON.stringify(md.og_cats),
+            official_group_data_type:md.f_odt,
+            publish_forms:JSON.stringify(md.publish_forms||[]),
+            has_hongbao_official:md.f_ohb==='true',
+            industry_group_categories:JSON.stringify(md.ig_cats),
+            industry_group_forms:JSON.stringify(md.industry_group_forms||[]),
+            has_hongbao_industry:md.f_ihb==='true',
+            contract_files:JSON.stringify(md._files||[]),
+            screenshot_requirement:md.f_screenshot,
+            created_by:currentUser.id, updated_at:new Date().toISOString()
+          };
+          await _doSubmit(payload, false);
+          count++;
+        }
+      }
+      toast(`已提交 ${count} 条排期`,'success');
+      closeModal('sch-modal'); pendingFiles=[];
+      showLoading(false);
+      await refreshCalendar();
+    } catch(e) { showLoading(false); toast('保存失败：'+e.message,'error'); }
+  })();
 }
 
 async function submitExch() {
-  const payload={
-    activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
-    owner:md.owner, date:md.date, time_slot:md.time_slot,
-    our_group_count:parseInt(document.getElementById('f_ourCnt').value)||0,
-    industry_need:document.getElementById('f_ind').value,
-    region_need:document.getElementById('f_reg').value,
-    their_group_count:parseInt(document.getElementById('f_theirCnt').value)||0,
-    their_total_people:parseInt(document.getElementById('f_theirPpl').value)||0,
-    our_total_people:parseInt(document.getElementById('f_ourPpl').value)||0,
-    created_by:currentUser.id, updated_at:new Date().toISOString()
-  };
-  await doSubmit(payload);
+  md.f_ourCnt = parseInt(document.getElementById('f_ourCnt').value)||0;
+  md.f_ind = document.getElementById('f_ind').value;
+  md.f_reg = document.getElementById('f_reg').value;
+  md.f_theirCnt = parseInt(document.getElementById('f_theirCnt').value)||0;
+  md.f_theirPpl = parseInt(document.getElementById('f_theirPpl').value)||0;
+  md.f_ourPpl = parseInt(document.getElementById('f_ourPpl').value)||0;
+  doBatchExch();
 }
 
-async function doSubmit(payload) {
-  showLoading();
-  try {
-    // Rule check for 赞助/商务
-    if(payload.activity_type==='赞助'||payload.activity_type==='商务') {
-      const existing=await api('GET','bj_schedules',`?activity_name=eq.${encodeURIComponent(payload.activity_name)}&activity_type=eq.${encodeURIComponent(payload.activity_type)}`);
-      const others=editingId?existing.filter(e=>e.id!==editingId):existing;
-      
-      if(['noon','afternoon_circle'].includes(payload.time_slot)) {
-        const circlePushes=others.filter(e=>['noon','afternoon_circle'].includes(e.time_slot));
-        if(circlePushes.length>=2){showLoading(false);return toast('朋友圈宣发已达2次上限（每个活动最多2次）','error');}
-        if(circlePushes.length===1){
-          const diff=Math.abs(new Date(circlePushes[0].date)-new Date(payload.date))/(86400000);
-          if(diff<1){showLoading(false);return toast('朋友圈宣发间隔需至少1天','error');}
+function doBatchExch() {
+  const dates = md.dates||[md.date].filter(Boolean);
+  const slots = md.slots||[md.time_slot].filter(Boolean);
+  const total = dates.length * slots.length;
+  if(total > 30) { toast('批量数量不超过30条，请减少选择','error'); return; }
+  let count = 0;
+  showLoading(true);
+  (async () => {
+    try {
+      for(const d of dates) {
+        for(const s of slots) {
+          const payload = {
+            activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
+            owner:md.owner, date:d, time_slot:s,
+            our_group_count:md.f_ourCnt,
+            industry_need:md.f_ind,
+            region_need:md.f_reg,
+            their_group_count:md.f_theirCnt,
+            their_total_people:md.f_theirPpl,
+            our_total_people:md.f_ourPpl,
+            created_by:currentUser.id, updated_at:new Date().toISOString()
+          };
+          await _doSubmit(payload, false);
+          count++;
         }
       }
+      toast(`已提交 ${count} 条排期`,'success');
+      closeModal('sch-modal');
+      showLoading(false);
+      await refreshCalendar();
+    } catch(e) { showLoading(false); toast('保存失败：'+e.message,'error'); }
+  })();
+}
+
+// _doSubmit: 单条记录提交（内部使用）
+async function _doSubmit(payload, isEdit=true) {
+  if(payload.activity_type==='赞助'||payload.activity_type==='商务') {
+    const existing=await api('GET','bj_schedules',`?activity_name=eq.${encodeURIComponent(payload.activity_name)}&activity_type=eq.${encodeURIComponent(payload.activity_type)}`);
+    const others=isEdit&&editingId?existing.filter(e=>e.id!==editingId):existing;
+    if(['noon','afternoon_circle'].includes(payload.time_slot)) {
+      const circlePushes=others.filter(e=>['noon','afternoon_circle'].includes(e.time_slot));
+      if(circlePushes.length>=2) throw new Error('朋友圈宣发已达2次上限（每个活动最多2次）');
+      if(circlePushes.length===1){
+        const diff=Math.abs(new Date(circlePushes[0].date)-new Date(payload.date))/(86400000);
+        if(diff<1) throw new Error('朋友圈宣发间隔需至少1天');
+      }
     }
-    
-    if(editingId) {
-      await api('PATCH','bj_schedules',`?id=eq.${editingId}`,payload);
-      toast('修改成功','success');
-    } else {
-      payload.created_at=new Date().toISOString();
-      await api('POST','bj_schedules','',payload);
-      toast('新增成功','success');
-    }
-    closeModal('sch-modal'); pendingFiles=[];
-    showLoading(false);  // 立即关闭遮罩，再异步刷新日历
-    await refreshCalendar();
-  }catch(e){showLoading(false);toast('保存失败：'+e.message,'error');}
+  }
+  if(isEdit&&editingId) {
+    await api('PATCH','bj_schedules',`?id=eq.${editingId}`,payload);
+  } else {
+    payload.created_at=new Date().toISOString();
+    await api('POST','bj_schedules','',payload);
+  }
+}
+
+// 保留旧的 doSubmit（编辑模式单条提交）
+async function doSubmit(payload) {
+  await _doSubmit(payload, true);
 }
 
 // ===== DETAIL MODAL =====
@@ -905,7 +1009,9 @@ async function openDetail(id, e) {
     const ev=data[0]; showLoading(false);
     const sm={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
     const tc={'赞助':'#f59e0b','商务':'#10b981','置换':'#8b5cf6'};
-    const pf=j(ev.publish_forms), igf=j(ev.industry_group_forms), og=j(ev.official_groups), cf=j(ev.contract_files);
+    const pf=j(ev.publish_forms), igf=j(ev.industry_group_forms);
+  const sa=j(ev.circle_service_accounts||'[]'), ogc=j(ev.official_group_categories||'[]'), igc=j(ev.industry_group_categories||'[]');
+  const cf=j(ev.contract_files||'[]');
     
     let b=`<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
       <div style="flex:1"><div style="font-size:19px;font-weight:800">${ev.activity_name}</div>
@@ -920,17 +1026,17 @@ async function openDetail(id, e) {
     
     if(ev.activity_type==='赞助'||ev.activity_type==='商务') {
       b+=`<div class="detail-section"><h4>📢 朋友圈</h4>
-        <div class="detail-row"><span class="detail-label">数据类型</span><span class="detail-value">${ev.circle_data_type||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">客服号</span><span class="detail-value">${sa.join('、')||'-'}</span></div>
         <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle?'✅ 是':'否'}</span></div>
       </div>
       <div class="detail-section"><h4>📣 官方群</h4>
-        <div class="detail-row"><span class="detail-label">群名称</span><span class="detail-value">${og.join('、')||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">群分类</span><span class="detail-value">${ogc.join('、')||'-'}</span></div>
         <div class="detail-row"><span class="detail-label">数据类型</span><span class="detail-value">${ev.official_group_data_type||'-'}</span></div>
         <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${pf.join('、')||'-'}</span></div>
         <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_official?'✅ 是':'否'}</span></div>
       </div>
       <div class="detail-section"><h4>🌐 行业&地区群</h4>
-        <div class="detail-row"><span class="detail-label">群分类</span><span class="detail-value">${ev.industry_region_group||'-'}</span></div>
+        <div class="detail-row"><span class="detail-label">群分类</span><span class="detail-value">${igc.join('、')||'-'}</span></div>
         <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${igf.join('、')||'-'}</span></div>
         <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_industry?'✅ 是':'否'}</span></div>
       </div>`;
@@ -1026,9 +1132,11 @@ async function setUserRole(id, role) {
 
 const OPT_CATS=[
   {k:'departments',l:'活动部门'},
-  {k:'circleDataTypes',l:'朋友圈 · 数据类型'},
+  {k:'circleServiceAccounts',l:'朋友圈 · 客服号'},
   {k:'officialGroupDataTypes',l:'官方群 · 数据类型'},
+  {k:'officialGroupCategories',l:'官方群 · 群分类'},
   {k:'industryRegionGroups',l:'行业&地区群'},
+  {k:'industryGroupCategories',l:'行业群 · 群分类'},
   {k:'industryNeeds',l:'置换 · 行业需求'},
   {k:'regionNeeds',l:'置换 · 地区需求'},
 ];
