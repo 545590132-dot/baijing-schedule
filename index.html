@@ -348,16 +348,20 @@ function toast(msg,type='') {
 }
 
 let loadingTimer=null;
+let _loadingShouldShow=false;  // 标志位：解决 200ms 延迟导致的竞态
 function showLoading(show=true) {
   clearTimeout(loadingTimer);
   if(show) {
+    _loadingShouldShow=true;
     loadingTimer = setTimeout(()=>{
+      if(!_loadingShouldShow) return; // 已被关闭，不创建遮罩
       if(!document.getElementById('loading-ov')) {
         const el=document.createElement('div'); el.id='loading-ov'; el.className='loading-overlay';
         el.innerHTML='<div class="spinner"></div>'; document.body.appendChild(el);
       }
     }, 200);
   } else {
+    _loadingShouldShow=false;
     const el=document.getElementById('loading-ov'); if(el) el.remove();
   }
 }
@@ -886,6 +890,7 @@ async function doSubmit(payload) {
       toast('新增成功','success');
     }
     closeModal('sch-modal'); pendingFiles=[];
+    showLoading(false);  // 立即关闭遮罩，再异步刷新日历
     await refreshCalendar();
   }catch(e){showLoading(false);toast('保存失败：'+e.message,'error');}
 }
