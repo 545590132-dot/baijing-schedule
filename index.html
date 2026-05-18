@@ -54,35 +54,39 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-today-btn:hover{background:var(--primary-dark)}
 
 /* CALENDAR */
-.calendar-wrap{padding:14px 20px 24px;overflow-x:auto}
+.calendar-wrap{padding:14px 20px 24px;overflow-x:auto;max-height:calc(100vh - 130px);overflow-y:auto}
 .calendar{border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow)}
-.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary))}
+.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:5}
 .cal-header-cell{padding:12px 6px;text-align:center;color:#fff;font-size:13px;font-weight:600}
 .cal-header-cell.label{background:rgba(0,0,0,.12);font-size:11px;font-weight:500}
-.cal-dates-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:2px solid var(--border);background:#f8faff}
+.cal-dates-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:2px solid var(--border);background:#f8faff;position:sticky;top:42px;z-index:4}
 .cal-date-cell{padding:8px 4px;text-align:center;border-left:1px solid var(--border)}
 .cal-date-cell:first-child{border-left:none}
 .date-num{display:inline-block;width:32px;height:32px;border-radius:50%;line-height:32px;font-size:14px;font-weight:700;color:var(--text)}
 .date-num.today{background:var(--primary);color:#fff}
+.date-num.dim{background:transparent!important;color:#cbd5e1!important}
+.cal-date-cell.dim .date-num{color:#d1d5db}
+.cal-date-cell.dim{background:#fafafa}
 .cal-body{display:flex;flex-direction:column}
-.cal-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:1px solid var(--border);min-height:80px}
+.cal-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:1px solid var(--border);min-height:120px}
 .cal-row:last-child{border-bottom:none}
 .cal-row-label{padding:8px 6px;background:#f8faff;border-right:1px solid var(--border);display:flex;align-items:flex-start;justify-content:center}
 .row-label-text{font-size:11px;font-weight:600;color:var(--text-muted);text-align:center;line-height:1.5}
-.cal-cell{padding:5px 4px;border-left:1px solid var(--border);cursor:default;transition:background .15s;position:relative;min-height:80px}
+.cal-cell{padding:4px 3px;border-left:1px solid var(--border);cursor:default;transition:background .15s;position:relative;min-height:120px;overflow:hidden}
 .cal-cell.admin-cell{cursor:pointer}
 .cal-cell.admin-cell:hover{background:#f0f7ff}
 .cal-cell.today-col{background:#eff6ff}
 .cal-cell.today-col.admin-cell:hover{background:#dbeafe}
-.event-card{background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 7px;margin-bottom:3px;font-size:11px;cursor:pointer;transition:all .15s;border-left:3px solid var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.cal-cell.dim-cell{background:#fafafa;opacity:.7}
+.event-card{background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 5px;margin-bottom:2px;font-size:10px;cursor:pointer;transition:all .15s;border-left:3px solid var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.05)}
 .event-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.1);transform:translateY(-1px)}
 .event-card.type-sponsor{border-left-color:#f59e0b}
 .event-card.type-business{border-left-color:#10b981}
 .event-card.type-exchange{border-left-color:#8b5cf6}
-.event-name{font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px}
-.event-owner{color:var(--text-muted);font-size:10px;margin-bottom:2px}
+.event-name{font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.event-owner{color:var(--text-muted);font-size:9px;margin-bottom:2px}
 .event-tags{display:flex;flex-wrap:wrap;gap:2px}
-.etag{display:inline-block;padding:1px 4px;border-radius:3px;font-size:9px;font-weight:600}
+.etag{display:inline-block;padding:1px 3px;border-radius:3px;font-size:8px;font-weight:600}
 .etag-notice{background:#fef3c7;color:#d97706}
 .etag-mention{background:#eff6ff;color:#2563eb}
 .etag-hb{background:#fef2f2;color:#ef4444}
@@ -262,10 +266,10 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
   </div>
 
   <div class="cal-nav">
-    <button class="cal-nav-btn" onclick="changeWeek(-1)">‹</button>
+    <button class="cal-nav-btn" onclick="changeMonth(-1)">‹</button>
     <div class="cal-nav-title" id="cal-nav-title"></div>
-    <button class="cal-nav-btn" onclick="changeWeek(1)">›</button>
-    <button class="cal-today-btn" onclick="goToday()">今天</button>
+    <button class="cal-nav-btn" onclick="changeMonth(1)">›</button>
+    <button class="cal-today-btn" onclick="goThisMonth()">当月</button>
     <div style="display:flex;align-items:center;margin-left:8px">
       <input id="cal-search" class="form-input" style="width:160px;padding:6px 10px;font-size:12px" placeholder="🔍 搜索排期内容..." value="" oninput="onSearchInput(this.value)">
     </div>
@@ -339,7 +343,7 @@ const HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Conten
 
 // ===== STATE =====
 let currentUser = null, isAdmin = false, isSuperAdmin = false;
-let weekStart = getWeekStart(new Date());
+let monthStart = getMonthStart(new Date()); // 月视图锚点：每月1日
 let scheduleMap = {};
 let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], industryRegionGroups:[], industryNeeds:[], regionNeeds:[], circleServiceAccounts:[], officialGroupCategories:[], industryGroupCategories:[] };
 let editingId = null;
@@ -351,6 +355,9 @@ let searchQuery = '';
 function getWeekStart(d) {
   const x = new Date(d); const day = x.getDay();
   x.setDate(x.getDate() - (day===0?6:day-1)); x.setHours(0,0,0,0); return x;
+}
+function getMonthStart(d) {
+  const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x;
 }
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -463,7 +470,7 @@ async function doLogin() {
 }
 
 function doLogout() {
-  currentUser=null; isAdmin=false; isSuperAdmin=false; scheduleMap={}; weekStart=getWeekStart(new Date());
+  currentUser=null; isAdmin=false; isSuperAdmin=false; scheduleMap={}; monthStart=getMonthStart(new Date());
   document.getElementById('auth-page').style.display='flex';
   document.getElementById('app-page').style.display='none';
   document.getElementById('login-phone').value=''; document.getElementById('login-pass').value='';
@@ -507,8 +514,20 @@ const HOLIDAYS_2026 = {
   '10-05':'国庆','10-06':'国庆','10-07':'国庆','10-08':'国庆',
 };
 
-function changeWeek(d){ weekStart=addDays(weekStart,d*7); searchQuery=''; document.getElementById('cal-search').value=''; refreshCalendar(); }
-function goToday(){ weekStart=getWeekStart(new Date()); searchQuery=''; document.getElementById('cal-search').value=''; refreshCalendar(); }
+function changeMonth(d) {
+  const x = new Date(monthStart);
+  x.setMonth(x.getMonth() + d);
+  monthStart = getMonthStart(x);
+  searchQuery = '';
+  document.getElementById('cal-search').value = '';
+  refreshCalendar();
+}
+function goThisMonth() {
+  monthStart = getMonthStart(new Date());
+  searchQuery = '';
+  document.getElementById('cal-search').value = '';
+  refreshCalendar();
+}
 
 let _searchTimer=null;
 function onSearchInput(val) {
@@ -527,8 +546,11 @@ async function refreshCalendar() {
       const q=encodeURIComponent(searchQuery);
       data=await api('GET','bj_schedules',`?or=(activity_name.ilike.%25${q}%25,department.ilike.%25${q}%25,owner.ilike.%25${q}%25,activity_type.ilike.%25${q}%25)&order=date.asc,time_slot.asc`);
     } else {
-      const end=addDays(weekStart,6);
-      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(weekStart)}&date=lte.${fmtDate(end)}&order=date.asc,time_slot.asc`);
+      // 获取当月全部数据
+      const mEnd = new Date(monthStart);
+      mEnd.setMonth(mEnd.getMonth() + 1);
+      mEnd.setDate(mEnd.getDate() - 1);
+      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(monthStart)}&date=lte.${fmtDate(mEnd)}&order=date.asc,time_slot.asc`);
     }
     scheduleMap={};
     data.forEach(item=>{ const k=`${item.date}_${item.time_slot}`; if(!scheduleMap[k]) scheduleMap[k]=[]; scheduleMap[k].push(item); });
@@ -538,55 +560,88 @@ async function refreshCalendar() {
 }
 
 function renderCalendar() {
-  const end=addDays(weekStart,6);
-  const y1=weekStart.getFullYear(), m1=weekStart.getMonth()+1, d1=weekStart.getDate();
-  const y2=end.getFullYear(), m2=end.getMonth()+1, d2=end.getDate();
-  document.getElementById('cal-nav-title').textContent=searchQuery
+  // 月导航标题
+  const y = monthStart.getFullYear(), m = monthStart.getMonth() + 1;
+  document.getElementById('cal-nav-title').textContent = searchQuery
     ? `🔍 搜索结果：${searchQuery}`
-    : `${y1}年${m1}月${d1}日 — ${m2}月${d2}日`;
+    : `${y}年${m}月`;
 
-  let h='';
+  // 计算当月日历网格（保证从周一开始）
+  const firstDow = monthStart.getDay(); // 0=周日
+  const mondayOffset = firstDow === 0 ? -6 : 1 - firstDow; // 距周一的偏移
+  const calStart = new Date(monthStart);
+  calStart.setDate(calStart.getDate() + mondayOffset);
+
+  // 当月最后一天
+  const mEnd = new Date(monthStart);
+  mEnd.setMonth(mEnd.getMonth() + 1);
+  mEnd.setDate(mEnd.getDate() - 1);
+  const lastDayOfMonth = mEnd.getDate();
+
+  // 计算总共几行（每周7天）
+  const endDow = mEnd.getDay() === 0 ? 7 : mEnd.getDay();
+  const totalDays = (6 - mondayOffset % 7) + (mEnd.getDate() - calStart.getDate()) + 1;
+  const totalWeeks = Math.ceil(totalDays / 7);
+
+  let h = '';
   // Header
-  h+='<div class="cal-header"><div class="cal-header-cell label">时段</div>';
-  WEEKDAYS.forEach(w=>h+=`<div class="cal-header-cell">周${w}</div>`);
-  h+='</div>';
-  // Dates row
-  h+='<div class="cal-dates-row"><div class="cal-date-cell"></div>';
-  for(let i=0;i<7;i++){
-    const d=addDays(weekStart,i); const ds=fmtDate(d);
-    const td=isToday(d)?' today':'';
-    const hm=HOLIDAYS_2026[ds.slice(5)];
-    // 判断是否周末（周六/周日）且不是法定节假日
-    const dow=d.getDay();
-    const isWeekend=(dow===0||dow===6);
-    const isWeekendDay=isWeekend&&!hm;
-    const hl=hm?' holiday':isWeekendDay?' weekend':'';
-    const title=hm?hm+(isWeekendDay?'（周末调休）':''):isWeekendDay?'周末':'';
-    h+=`<div class="cal-date-cell${hl}"${title?' title="'+title+'"':''}><span class="date-num${td}">${d.getDate()}</span>${hm?'<span class="holiday-tip">'+hm+'</span>':isWeekendDay?'<span class="holiday-tip" style="color:#6b7280">周末</span>':''}</div>`;
+  h += '<div class="cal-header"><div class="cal-header-cell label">时段</div>';
+  WEEKDAYS.forEach(w => h += `<div class="cal-header-cell">周${w}</div>`);
+  h += '</div>';
+
+  // 月份日期行
+  h += '<div class="cal-dates-row"><div class="cal-date-cell"></div>';
+  for(let i = 0; i < 7; i++) {
+    const d = new Date(calStart);
+    d.setDate(d.getDate() + i);
+    const ds = fmtDate(d);
+    const td = isToday(d) ? ' today' : '';
+    const hm = HOLIDAYS_2026[ds.slice(5)];
+    const dow = d.getDay();
+    const isWeekend = (dow === 0 || dow === 6);
+    const isWeekendDay = isWeekend && !hm;
+    const hl = hm ? ' holiday' : isWeekendDay ? ' weekend' : '';
+    const title = hm ? hm + (isWeekendDay ? '（周末调休）' : '') : isWeekendDay ? '周末' : '';
+    const inMonth = d.getMonth() + 1 === m;
+    h += `<div class="cal-date-cell${hl}${!inMonth ? ' dim' : ''}"${title ? ' title="' + title + '"' : ''}>
+      <span class="date-num${td}${!inMonth ? ' dim' : ''}">${d.getDate()}</span>
+      ${hm ? '<span class="holiday-tip">' + hm + '</span>' : isWeekendDay ? '<span class="holiday-tip" style="color:#6b7280">周末</span>' : ''}
+    </div>`;
   }
-  h+='</div><div class="cal-body">';
-  // Rows
-  SLOTS.forEach(slot=>{
-    h+=`<div class="cal-row"><div class="cal-row-label"><span class="row-label-text">${slot.l.replace('\n','<br>')}</span></div>`;
-    for(let i=0;i<7;i++){
-      const d=addDays(weekStart,i); const ds=fmtDate(d);
-      const tc=isToday(d)?' today-col':'';
-      const ac=isSuperAdmin?' admin-cell':'';
-      const dbl=isSuperAdmin?` ondblclick="dbClick('${ds}','${slot.k}',event)"`:'';
-      h+=`<div class="cal-cell${tc}${ac}"${dbl}>`;
-      (scheduleMap[`${ds}_${slot.k}`]||[]).forEach(ev=>h+=renderCard(ev));
-      if(isAdmin) h+='<div class="cell-add-hint">＋</div>';
-      h+='</div>';
+  h += '</div>';
+
+  // 身体：每周一行，每行7格，每格内按 time_slot 分栏显示事件
+  const slotOrder = ['morning', 'noon', 'afternoon', 'afternoon_circle'];
+  for(let week = 0; week < totalWeeks; week++) {
+    h += `<div class="cal-row">`;
+    h += `<div class="cal-row-label"><span class="row-label-text">第${week + 1}周</span></div>`;
+    for(let dow = 0; dow < 7; dow++) {
+      const cellDate = new Date(calStart);
+      cellDate.setDate(calStart.getDate() + week * 7 + dow);
+      const ds = fmtDate(cellDate);
+      const inMonth = cellDate.getMonth() + 1 === m;
+      const tc = isToday(cellDate) ? ' today-col' : '';
+      const ac = isSuperAdmin ? ' admin-cell' : '';
+      const dbl = isSuperAdmin ? ` ondblclick="dbClick('${ds}','',event)"` : '';
+      h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}"${dbl}>`;
+      // 每个时段一个事件槽
+      slotOrder.forEach(slot => {
+        const evs = scheduleMap[`${ds}_${slot}`] || [];
+        evs.forEach(ev => h += renderCard(ev));
+      });
+      if(isAdmin) h += '<div class="cell-add-hint">＋</div>';
+      h += '</div>';
     }
-    h+='</div>';
-  });
-  h+='</div>';
-  if(searchQuery) {
-    h+='<div class="cal-footer-hint">🔍 搜索模式：显示所有匹配"<b>'+searchQuery+'</b>"的排期 · <a href="#" onclick="goToday();return false" style="color:var(--primary)">清除搜索</a></div>';
-  } else if(isSuperAdmin) {
-    h+='<div class="cal-footer-hint">💡 双击单元格可快速新增排期 · 点击卡片查看详情</div>';
+    h += '</div>';
   }
-  document.getElementById('calendar').innerHTML=h;
+
+  h += '</div>';
+  if(searchQuery) {
+    h += '<div class="cal-footer-hint">🔍 搜索模式：显示所有匹配"<b>' + searchQuery + '</b>"的排期 · <a href="#" onclick="goThisMonth();return false" style="color:var(--primary)">清除搜索</a></div>';
+  } else if(isSuperAdmin) {
+    h += '<div class="cal-footer-hint">💡 点击日期格可快速新增排期 · 点击卡片查看详情</div>';
+  }
+  document.getElementById('calendar').innerHTML = h;
 }
 
 function renderCard(ev) {
@@ -608,7 +663,7 @@ function renderCard(ev) {
 }
 
 function dbClick(date, slot, e) {
-  if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot);
+  if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot || 'morning');
 }
 
 // ===== SCHEDULE MODAL =====
@@ -661,10 +716,11 @@ function renderStep1() {
   }
   const deptOpts=deps.map(d=>`<option value="${d}" ${md.department===d?'selected':''}>${d}</option>`).join('');
 
-  // 当前周的7天日期 checkbox
+  // 生成日期 chip：当前月起约60天（不限当周）
   const weekChips=[];
-  for(let i=0;i<7;i++){
-    const d=addDays(weekStart,i);
+  const today=new Date();
+  for(let i=0;i<60;i++){
+    const d=new Date(today); d.setDate(today.getDate()+i-3); // 从今天-3天开始
     const ds=fmtDate(d);
     const wday=['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
     const isChk=curDates.includes(ds);
@@ -704,7 +760,7 @@ function renderStep1() {
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
       <div class="date-chip-group" id="f_dates">${weekChips.join('')}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 点击选中/取消，绿色表示已选</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 点击选中/取消，绿色表示已选（当前月起60天内可选）</div>
     </div>
     <div class="form-group">
       <label class="required">宣发时段（可多选）</label>
@@ -731,6 +787,17 @@ function toggleSlot(el, k) {
   const checked=!input.checked;
   input.checked=checked;
   el.className='checkbox-item'+(checked?' checked':'');
+}
+
+function updateTypeTip() {
+  const type=document.getElementById('f_type')?document.getElementById('f_type').value:'';
+  const tips={
+    '赞助':'<div class="constraint-tip">💡 赞助类型：朋友圈最多2次宣发，同一日期间隔≥1天；需填写客服号、群分类、宣传形式等</div>',
+    '商务':'<div class="constraint-tip">📎 商务类型：需上传合同文件；朋友圈最多2次宣发，同一日期间隔≥1天</div>',
+    '置换':'<div class="constraint-tip">🔄 置换类型：填写双方群数量及覆盖人数，置换详情可不填</div>',
+  };
+  const el=document.getElementById('type-tip');
+  if(el) el.innerHTML=tips[type]||'';
 }
 
 function step1Next() {
