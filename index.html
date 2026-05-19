@@ -761,9 +761,9 @@ function renderDatePicker() {
 
   document.getElementById('f_dates').innerHTML = '<div class="date-picker-wrap">' +
     '<div class="date-picker-nav">' +
-    '<button class="date-picker-nav-btn" onclick="changePickerMonth(-1)">&#8250;</button>' +
+    '<button class="date-picker-nav-btn" onclick="changePickerMonth(-1)">&#8249;</button>' +
     '<span class="date-picker-title">' + y + '年' + m + '月</span>' +
-    '<button class="date-picker-nav-btn" onclick="changePickerMonth(1)">&#8251;</button>' +
+    '<button class="date-picker-nav-btn" onclick="changePickerMonth(1)">&#8250;</button>' +
     '</div>' +
     '<div class="date-picker-grid">' +
     WEEKDAY_LABELS.map(function(w) { return '<div style="text-align:center;padding:6px 0;font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:1px solid #f1f5f9">周' + w + '</div>'; }).join('') +
@@ -911,7 +911,7 @@ function renderStep1() {
     <div class="form-group">
       <label class="required">宣发时段（可多选）</label>
       <div class="checkbox-group" id="f_slots">
-        ${Object.entries(slotLabels).map(([k,l])=>`<label class="checkbox-item ${curSlots.includes(k)?'checked':''}" onclick="toggleSlot(this,'${k}')">${l}</label>`).join('')}
+        ${Object.entries(slotLabels).map(([k,l])=>`<label class="checkbox-item ${curSlots.includes(k)?'checked':''}" onclick="toggleSlot(this,'${k}')"><input type="checkbox" style="display:none" ${curSlots.includes(k)?'checked':''}>${l}</label>`).join('')}
       </div>
     </div>
     <div id="type-tip"></div>
