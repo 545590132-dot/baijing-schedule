@@ -1013,16 +1013,16 @@ function renderStep2() {
     </div>
     <div class="form-group">
       <label class="required">宣发时段</label>
-      <div class="radio-group">
-        <label class="radio-item ${md.circle_time_slot==='上午发圈'?'selected':''}" onclick="selectRadio(this,'circle_time_slot','上午发圈')">上午发圈</label>
-        <label class="radio-item ${md.circle_time_slot==='下午发圈'?'selected':''}" onclick="selectRadio(this,'circle_time_slot','下午发圈')">下午发圈</label>
+      <div class="radio-group" id="rg_circle_time">
+        <label class="radio-item ${md.circle_time_slot==='上午发圈'?'selected':''}" onclick="selectRadio(this,'rg_circle_time','circle_time_slot','上午发圈')">上午发圈</label>
+        <label class="radio-item ${md.circle_time_slot==='下午发圈'?'selected':''}" onclick="selectRadio(this,'rg_circle_time','circle_time_slot','下午发圈')">下午发圈</label>
       </div>
     </div>
     <div class="form-group">
       <label class="required">是否发红包</label>
-      <div class="radio-group">
-        <label class="radio-item ${md.circle_hongbao===true||md.circle_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'circle_hongbao','true')">是</label>
-        <label class="radio-item ${md.circle_hongbao===false||md.circle_hongbao==='false'||md.circle_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'circle_hongbao','false')">否</label>
+      <div class="radio-group" id="rg_circle_hongbao">
+        <label class="radio-item ${md.circle_hongbao===true||md.circle_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'rg_circle_hongbao','circle_hongbao','true')">是</label>
+        <label class="radio-item ${md.circle_hongbao===false||md.circle_hongbao==='false'||md.circle_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'rg_circle_hongbao','circle_hongbao','false')">否</label>
       </div>
     </div>
   `;
@@ -1049,8 +1049,8 @@ function changeCirclePickerMonth(delta) {
   renderStep2();
 }
 
-function selectRadio(el, field, value) {
-  document.querySelectorAll(`#sch-modal-body .radio-item`).forEach(item => {
+function selectRadio(el, groupId, field, value) {
+  document.querySelectorAll(`#${groupId} .radio-item`).forEach(item => {
     item.classList.remove('selected');
   });
   el.classList.add('selected');
@@ -1165,9 +1165,9 @@ function renderStep3() {
     </div>
     <div class="form-group">
       <label class="required">宣发时段</label>
-      <div class="radio-group">
-        <label class="radio-item ${md.community_time_slot==='上午群发'?'selected':''}" onclick="selectRadio(this,'community_time_slot','上午群发')">上午群发</label>
-        <label class="radio-item ${md.community_time_slot==='下午群发'?'selected':''}" onclick="selectRadio(this,'community_time_slot','下午群发')">下午群发</label>
+      <div class="radio-group" id="rg_community_time">
+        <label class="radio-item ${md.community_time_slot==='上午群发'?'selected':''}" onclick="selectRadio(this,'rg_community_time','community_time_slot','上午群发')">上午群发</label>
+        <label class="radio-item ${md.community_time_slot==='下午群发'?'selected':''}" onclick="selectRadio(this,'rg_community_time','community_time_slot','下午群发')">下午群发</label>
       </div>
     </div>
     <div class="form-group">
@@ -1176,9 +1176,9 @@ function renderStep3() {
     </div>
     <div class="form-group">
       <label class="required">是否发红包</label>
-      <div class="radio-group">
-        <label class="radio-item ${md.community_hongbao===true||md.community_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'community_hongbao','true')">是</label>
-        <label class="radio-item ${md.community_hongbao===false||md.community_hongbao==='false'||md.community_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'community_hongbao','false')">否</label>
+      <div class="radio-group" id="rg_community_hongbao">
+        <label class="radio-item ${md.community_hongbao===true||md.community_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'rg_community_hongbao','community_hongbao','true')">是</label>
+        <label class="radio-item ${md.community_hongbao===false||md.community_hongbao==='false'||md.community_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'rg_community_hongbao','community_hongbao','false')">否</label>
       </div>
     </div>
 
