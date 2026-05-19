@@ -938,6 +938,7 @@ function renderStep2() {
   if(!Array.isArray(md.service_accounts)) md.service_accounts=j(md.circle_service_accounts||'[]');
   if(!Array.isArray(md.circle_dates)) md.circle_dates=[];
   if(!md.circle_time_slot) md.circle_time_slot='';
+  if(md.circle_hongbao === undefined) md.circle_hongbao = null;
 
   // 客服号（朋友圈）- 默认全选
   const allSA=opts.circleServiceAccounts||[];
@@ -1053,7 +1054,8 @@ function selectRadio(el, field, value) {
     item.classList.remove('selected');
   });
   el.classList.add('selected');
-  md[field] = value === 'true';
+  // 只有 'true'/'false' 字符串才转布尔值，其他保持原值（如宣发时段）
+  md[field] = (value === 'true') ? true : (value === 'false') ? false : value;
 }
 
 function step2Next() {
@@ -1081,6 +1083,7 @@ function renderStep3() {
   if(!Array.isArray(md.community_dates)) md.community_dates=[];
   if(!Array.isArray(md.community_forms)) md.community_forms=j(md.community_publish_forms||'[]');
   if(!md.community_time_slot) md.community_time_slot='';
+  if(md.community_hongbao === undefined) md.community_hongbao = null;
 
   // 群明细（社群）- 默认全选
   const allGroups=opts.communityGroups||[];
