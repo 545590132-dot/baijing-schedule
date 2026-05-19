@@ -939,9 +939,8 @@ function step1Next() {
   const dept=document.getElementById('f_dept').value;
   const type=document.getElementById('f_type').value;
   const owner=document.getElementById('f_owner').value.trim();
-  // 收集选中的日期
-  const dateEls=document.querySelectorAll('#f_dates .date-chip input:checked');
-  const dates=Array.from(dateEls).map(el=>el.closest('.date-chip').getAttribute('onclick').match(/'([^']+)'/)[1]);
+  // 收集选中的日期（从 md.dates 获取，因为日历选择器直接存储在数组中）
+  const dates=md.dates || [];
   // 收集选中的时段
   const slotEls=document.querySelectorAll('#f_slots .checkbox-item.checked');
   const slots=Array.from(slotEls).map(el=>el.getAttribute('onclick').match(/'([^']+)'/)[1]);
