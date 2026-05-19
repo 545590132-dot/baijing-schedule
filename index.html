@@ -54,13 +54,13 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-today-btn:hover{background:var(--primary-dark)}
 
 /* CALENDAR */
-.calendar-wrap{padding:14px 20px 24px;overflow-x:auto;max-height:calc(100vh - 130px);overflow-y:auto}
-.calendar{border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow)}
+.calendar-wrap{padding:14px 20px 24px;max-height:calc(100vh - 130px);overflow-y:auto}
+.calendar{border-radius:var(--radius);overflow-x:auto;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow);position:relative}
 
 /* 表头 */
 .cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:6}
 .cal-hc-slot{padding:10px 4px;text-align:center;color:#fff;font-size:12px;font-weight:600;border-left:1px solid rgba(255,255,255,.2)}
-.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px}
+.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;position:sticky;left:0;z-index:7;width:88px;flex-shrink:0}
 
 /* 月份日期行 */
 .cal-month-bar{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f0f7ff;border-bottom:2px solid var(--border);position:sticky;top:40px;z-index:5}
@@ -82,14 +82,14 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-week-tag{font-size:10px;font-weight:700;color:var(--text-muted);padding:3px 10px;background:#f8faff;border-bottom:1px solid var(--border);border-top:1px solid var(--border)}
 
 /* 时段行 */
-.cal-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:1px solid #f1f5f9;min-height:90px}
+.cal-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:1px solid #f1f5f9;min-height:90px;position:relative}
 .cal-row:last-child{border-bottom:none}
 
 /* 时段标签 */
-.cal-slot-label{padding:6px 6px;background:#fafbfc;border-right:1px solid var(--border);display:flex;align-items:flex-start;justify-content:center;font-size:10px;font-weight:600;color:var(--text-muted);text-align:center;line-height:1.4}
+.cal-slot-label{padding:6px 6px;background:#fafbfc;border-right:2px solid var(--border);display:flex;align-items:flex-start;justify-content:center;font-size:10px;font-weight:600;color:var(--text-muted);text-align:center;line-height:1.4;position:sticky;left:0;z-index:3;width:88px;flex-shrink:0}
 
 /* 格子 */
-.cal-cell{padding:4px 3px;border-left:1px solid var(--border);cursor:default;transition:background .15s;position:relative;min-height:90px;overflow:hidden}
+.cal-cell{padding:4px 3px;border-left:1px solid var(--border);cursor:default;transition:background .15s;position:relative;min-height:90px;overflow:hidden;z-index:1}
 .cal-cell.admin-cell{cursor:pointer}
 .cal-cell.admin-cell:hover{background:#f0f7ff}
 .cal-cell.today-col{background:#eff6ff}
@@ -229,6 +229,14 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .date-picker-cell .dp-week{font-size:9px;color:#94a3b8;margin-top:1px}
 .date-picker-cell.selected .dp-day{color:#16a34a;font-weight:700}
 
+
+/* 周日期行 - 显示每周的7天日期 */
+.cal-week-dates{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f8faff;border-bottom:1px solid var(--border);position:sticky;left:0;z-index:4}
+.cal-week-date-cell{padding:4px 2px;text-align:center;font-size:10px;border-left:1px solid #e2e8f0}
+.cal-week-date-cell.today-week{color:var(--primary);font-weight:700}
+.cal-week-date-cell.dim-week{color:#94a3b8}
+.cal-week-date-num{display:block;font-size:11px;font-weight:600}
+.cal-week-date-wday{display:block;font-size:9px;color:#94a3b8;margin-top:1px}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
 </style>
@@ -658,7 +666,24 @@ function renderCalendar() {
   // ===== 主体：每周 × 每时段 =====
   for (let wk = 0; wk < totalWeeks; wk++) {
     h += `<div class="cal-week-block">`;
-    h += `<div class="cal-week-tag">第${wk + 1}周</div>`;
+    // 添加周日期行
+    h += `<div class="cal-week-dates">`;
+    h += `<div class="cal-hc-slot"></div>`; // 空时段占位
+    for (let di = 0; di < 7; di++) {
+      const d = new Date(firstDay);
+      d.setDate(firstDay.getDate() + wk * 7 + di);
+      const ds = fmtDate(d);
+      const inMonth = d.getMonth() + 1 === m;
+      const isTodayD = isToday(d);
+      const dow = d.getDay();
+      const wdayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      const dayClass = isTodayD ? 'today-week' : (!inMonth ? 'dim-week' : '');
+      h += `<div class="cal-week-date-cell ${dayClass}">
+        <span class="cal-week-date-num">${d.getMonth() + 1}月${d.getDate()}日</span>
+        <span class="cal-week-date-wday">${wdayLabels[dow]}</span>
+      </div>`;
+    }
+    h += `</div>`;
 
     for (const slot of SLOTS) {
       h += `<div class="cal-row">`;
