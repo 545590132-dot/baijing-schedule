@@ -393,7 +393,7 @@ const HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Conten
 let currentUser = null, isAdmin = false, isSuperAdmin = false;
 let monthStart = getMonthStart(new Date()); // 月视图锚点：每月1日
 let scheduleMap = {};
-let opts = { departments:[], circleDataTypes:[], officialGroupDataTypes:[], industryRegionGroups:[], industryNeeds:[], regionNeeds:[], circleServiceAccounts:[], officialGroupCategories:[], industryGroupCategories:[] };
+let opts = { departments:[], circleServiceAccounts:[], communityGroups:[] };
 let editingId = null;
 let md = {}; // modal data
 let pendingFiles = [];
@@ -542,7 +542,7 @@ async function enterApp() {
 async function loadOpts() {
   try {
   const data=await api('GET','bj_options','');
-  opts={departments:[],circleDataTypes:[],officialGroupDataTypes:[],industryRegionGroups:[],industryNeeds:[],regionNeeds:[],circleServiceAccounts:[],officialGroupCategories:[],industryGroupCategories:[]};
+  opts={departments:[], circleServiceAccounts:[], communityGroups:[]};
   data.forEach(o=>{ if(opts[o.category]!==undefined) opts[o.category].push(o.value); });
   }catch(e){ console.warn('load opts fail',e); }
 }
@@ -594,16 +594,16 @@ async function refreshCalendar() {
     let data;
     if(searchQuery) {
       const q=encodeURIComponent(searchQuery);
-      data=await api('GET','bj_schedules',`?or=(activity_name.ilike.%25${q}%25,department.ilike.%25${q}%25,owner.ilike.%25${q}%25,activity_type.ilike.%25${q}%25)&order=date.asc,time_slot.asc`);
+      data=await api('GET','bj_schedules',`?or=(activity_name.ilike.%25${q}%25,department.ilike.%25${q}%25,owner.ilike.%25${q}%25,activity_type.ilike.%25${q}%25)&order=date.asc`);
     } else {
       // 获取当月全部数据
       const mEnd = new Date(monthStart);
       mEnd.setMonth(mEnd.getMonth() + 1);
       mEnd.setDate(mEnd.getDate() - 1);
-      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(monthStart)}&date=lte.${fmtDate(mEnd)}&order=date.asc,time_slot.asc`);
+      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(monthStart)}&date=lte.${fmtDate(mEnd)}&order=date.asc`);
     }
     scheduleMap={};
-    data.forEach(item=>{ const k=`${item.date}_${item.time_slot}`; if(!scheduleMap[k]) scheduleMap[k]=[]; scheduleMap[k].push(item); });
+    data.forEach(item=>{ const k=`${item.date}`; if(!scheduleMap[k]) scheduleMap[k]=[]; scheduleMap[k].push(item); });
   } catch(e){ toast('加载数据失败','error'); console.error(e); scheduleMap={}; }
   showLoading(false);
   renderCalendar();
@@ -631,27 +631,21 @@ function renderCalendar() {
   const totalWeeks = Math.ceil(daysSpan / 7);
 
   const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
-  const SLOTS = [
-    { k: 'morning', label: '上午群推送' },
-    { k: 'noon', label: '中午发圈' },
-    { k: 'afternoon', label: '下午群推送' },
-    { k: 'afternoon_circle', label: '下午发圈' }
-  ];
 
   let h = '';
 
   // ===== 表头 =====
   h += '<div class="cal-header">';
-  h += '<div class="cal-hc-slot label">时段</div>';
+  h += '<div class="cal-hc-slot label">日期</div>';
   for (let i = 0; i < 7; i++) h += `<div class="cal-hc-slot">周${WEEKDAY_LABELS[i]}</div>`;
   h += '</div>';
 
-  // ===== 主体：每周 × 每时段 =====
+  // ===== 主体：每天一行 =====
   for (let wk = 0; wk < totalWeeks; wk++) {
     h += `<div class="cal-week-block">`;
     // 添加周日期行
     h += `<div class="cal-week-dates">`;
-    h += `<div class="cal-slot-label-sticky"></div>`; // 时段固定列
+    h += `<div class="cal-slot-label-sticky"></div>`; // 日期固定列
     for (let di = 0; di < 7; di++) {
       const d = new Date(firstDay);
       d.setDate(firstDay.getDate() + wk * 7 + di);
@@ -671,24 +665,23 @@ function renderCalendar() {
     }
     h += `</div>`;
 
-    for (const slot of SLOTS) {
-      h += `<div class="cal-row">`;
-      h += `<div class="cal-slot-label-fixed">${slot.label}</div>`;
-      for (let di = 0; di < 7; di++) {
-        const d = new Date(firstDay);
-        d.setDate(firstDay.getDate() + wk * 7 + di);
-        const ds = fmtDate(d);
-        const inMonth = d.getMonth() + 1 === m;
-        const tc = isToday(d) ? ' today-col' : '';
-        const ac = isSuperAdmin ? ' admin-cell' : '';
-        const dbl = isSuperAdmin ? ` ondblclick="dbClick('${ds}','${slot.k}',event)"` : '';
-        h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}"${dbl}>`;
-        (scheduleMap[`${ds}_${slot.k}`] || []).forEach(ev => h += renderCard(ev));
-        if (isAdmin) h += '<div class="cell-add-hint">＋</div>';
-        h += '</div>';
-      }
+    // 每天一行
+    h += `<div class="cal-row">`;
+    h += `<div class="cal-slot-label-fixed">排期</div>`;
+    for (let di = 0; di < 7; di++) {
+      const d = new Date(firstDay);
+      d.setDate(firstDay.getDate() + wk * 7 + di);
+      const ds = fmtDate(d);
+      const inMonth = d.getMonth() + 1 === m;
+      const tc = isToday(d) ? ' today-col' : '';
+      const ac = isSuperAdmin ? ' admin-cell' : '';
+      const dbl = isSuperAdmin ? ` ondblclick="dbClick('${ds}',event)"` : '';
+      h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}"${dbl}>`;
+      (scheduleMap[ds] || []).forEach(ev => h += renderCard(ev));
+      if (isAdmin) h += '<div class="cell-add-hint">＋</div>';
       h += '</div>';
     }
+    h += '</div>';
     h += '</div>';
   }
 
@@ -778,14 +771,16 @@ function togglePickerDate(ds, el) {
 }
 
 function renderCard(ev) {
-  var pf=j(ev.publish_forms), igf=j(ev.industry_group_forms);
+  var sa=j(ev.circle_service_accounts||'[]');
+  var cg=j(ev.community_group_details||'[]');
+  var cf=j(ev.community_publish_forms||'[]');
   var tags='';
   if(ev.activity_type==='置换') tags+='<span class="etag etag-exchange">置换</span>';
   else {
-    if(['noon','afternoon_circle'].indexOf(ev.time_slot)>=0) tags+='<span class="etag etag-circle">发圈</span>';
-    if(pf.indexOf('@所有人')>=0) tags+='<span class="etag etag-mention">@全体</span>';
-    if(pf.indexOf('群置顶')>=0) tags+='<span class="etag etag-top">置顶</span>';
-    if(ev.has_hongbao_circle||ev.has_hongbao_official||ev.has_hongbao_industry) tags+='<span class="etag etag-hb">&#x1F6A7;</span>';
+    if(sa.length>0) tags+='<span class="etag etag-circle">朋友圈</span>';
+    if(cf.indexOf('@所有人')>=0) tags+='<span class="etag etag-mention">@全体</span>';
+    if(cf.indexOf('群置顶')>=0) tags+='<span class="etag etag-top">置顶</span>';
+    if(ev.has_hongbao_circle||ev.has_hongbao_community) tags+='<span class="etag etag-hb">红包</span>';
   }
   var tc = ev.activity_type==='赞助'?'type-sponsor':ev.activity_type==='商务'?'type-business':ev.activity_type==='置换'?'type-exchange':'';
   var nameHtml = highlightText(ev.activity_name || '', searchQuery);
@@ -797,8 +792,8 @@ function renderCard(ev) {
     '</div>';
 }
 
-function dbClick(date, slot, e) {
-  if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot || 'morning');
+function dbClick(date, e) {
+  if(!isAdmin) return; e.stopPropagation(); openAddModal(date);
 }
 
 // ===== SCHEDULE MODAL =====
@@ -827,11 +822,13 @@ async function openEditModal(id) {
     const data=await api('GET','bj_schedules',`?id=eq.${id}`);
     if(!data||!data[0]){showLoading(false);toast('数据不存在','error');return;}
     editingId=id; pendingFiles=[]; md={...data[0]};
-    md.publish_forms=j(md.publish_forms); md.industry_group_forms=j(md.industry_group_forms);
-    md.contract_files=j(md.contract_files||'[]');
+    // 解析 JSON 字段
     md.service_accounts=j(md.circle_service_accounts||'[]');
-    md.og_cats=j(md.official_group_categories||'[]');
-    md.ig_cats=j(md.industry_group_categories||'[]');
+    md.circle_dates=j(md.circle_publish_dates||'[]');
+    md.community_groups=j(md.community_group_details||'[]');
+    md.community_dates=j(md.community_publish_dates||'[]');
+    md.community_forms=j(md.community_publish_forms||'[]');
+    md.contract_files=j(md.contract_files||'[]');
     // 设置日期选择器月份为编辑日期所在月
     if(md.date) {
       const dParts = md.date.split('-');
@@ -847,8 +844,6 @@ async function openEditModal(id) {
 }
 
 function renderStep1() {
-  const slotLabels={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
-  const curSlots=(md.slots||(md.time_slot?[md.time_slot]:[]));
   const curDates=(md.dates||(md.date?[md.date]:[]));
   const curType=md.activity_type||'';
   const deps=(opts.departments||[]);
@@ -868,7 +863,10 @@ function renderStep1() {
       <div class="step-dot active">1</div>
       <div class="step-line" id="sl1"></div>
       <div class="step-dot" id="sd2">2</div>
+      <div class="step-line" id="sl2"></div>
+      <div class="step-dot" id="sd3">3</div>
     </div>
+    <div class="section-title">📋 基本信息</div>
     <div class="form-group">
       <label class="required">活动名称</label>
       <input class="form-input" id="f_name" value="${md.activity_name||''}" placeholder="请输入活动名称">
@@ -893,12 +891,6 @@ function renderStep1() {
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
       <div id="f_dates"></div>
-    </div>
-    <div class="form-group">
-      <label class="required">宣发时段（可多选）</label>
-      <div class="checkbox-group" id="f_slots">
-        ${Object.entries(slotLabels).map(([k,l])=>`<label class="checkbox-item ${curSlots.includes(k)?'checked':''}" onclick="toggleSlot(this,'${k}')"><input type="checkbox" style="display:none" ${curSlots.includes(k)?'checked':''}>${l}</label>`).join('')}
-      </div>
     </div>
     <div id="type-tip"></div>
   `;
@@ -926,9 +918,9 @@ function toggleSlot(el, k) {
 function updateTypeTip() {
   const type=document.getElementById('f_type')?document.getElementById('f_type').value:'';
   const tips={
-    '赞助':'<div class="constraint-tip">💡 赞助类型：朋友圈最多2次宣发，同一日期间隔≥1天；需填写客服号、群分类、宣传形式等</div>',
-    '商务':'<div class="constraint-tip">📎 商务类型：需上传合同文件；朋友圈最多2次宣发，同一日期间隔≥1天</div>',
-    '置换':'<div class="constraint-tip">🔄 置换类型：填写双方群数量及覆盖人数，置换详情可不填</div>',
+    '赞助':'<div class="constraint-tip">💡 赞助类型：需填写朋友圈宣传和社群宣传信息</div>',
+    '商务':'<div class="constraint-tip">📎 商务类型：需上传合同文件</div>',
+    '置换':'<div class="constraint-tip">🔄 置换类型：填写双方群数量及覆盖人数</div>',
   };
   const el=document.getElementById('type-tip');
   if(el) el.innerHTML=tips[type]||'';
@@ -939,108 +931,251 @@ function step1Next() {
   const dept=document.getElementById('f_dept').value;
   const type=document.getElementById('f_type').value;
   const owner=document.getElementById('f_owner').value.trim();
-  // 收集选中的日期（从 md.dates 获取，因为日历选择器直接存储在数组中）
-  const dates=md.dates || [];
-  // 收集选中的时段
-  const slotEls=document.querySelectorAll('#f_slots .checkbox-item.checked');
-  const slots=Array.from(slotEls).map(el=>el.getAttribute('onclick').match(/'([^']+)'/)[1]);
+  // 收集选中的日期（从 md.dates 获取，并兼容 DOM 中的 selected 状态）
+  const domSelected = document.querySelectorAll('#f_dates .date-picker-cell.selected');
+  const domDates = Array.from(domSelected).map(el => {
+    // 从 onclick 属性提取日期: togglePickerDate('2026-05-20', this)
+    var match = el.getAttribute('onclick').match(/'([^']+)'/);
+    return match ? match[1] : null;
+  }).filter(Boolean);
+  const dates = domDates.length > 0 ? domDates : (md.dates || []);
   if(!name||!dept||!type||!owner) return toast('请填写所有必填项','error');
   if(!dates.length) return toast('请至少选择一天','error');
-  if(!slots.length) return toast('请至少选择一个时段','error');
+  // 同步 md.dates
+  md.dates = dates;
   md.activity_name=name; md.department=dept; md.activity_type=type;
-  md.owner=owner; md.dates=dates; md.slots=slots;
+  md.owner=owner; md.dates=dates;
   document.getElementById('sd2').className='step-dot active';
   document.getElementById('sl1').className='step-line done';
-  if(type==='置换') renderStep2Exchange(); else renderStep2Spon();
+  document.getElementById('sd3').className='step-dot';
+  document.getElementById('sl2').className='step-line';
+  renderStep2();
 }
 
-function renderStep2Spon() {
-  if(!Array.isArray(md.publish_forms)) md.publish_forms=j(md.publish_forms);
-  if(!Array.isArray(md.industry_group_forms)) md.industry_group_forms=j(md.industry_group_forms);
-  if(!Array.isArray(md.contract_files)) md.contract_files=j(md.contract_files);
+function renderStep2() {
   if(!Array.isArray(md.service_accounts)) md.service_accounts=j(md.circle_service_accounts||'[]');
-  if(!Array.isArray(md.og_cats)) md.og_cats=j(md.official_group_categories||'[]');
-  if(!Array.isArray(md.ig_cats)) md.ig_cats=j(md.industry_group_categories||'[]');
+  if(!Array.isArray(md.circle_dates)) md.circle_dates = md.dates ? [...md.dates] : [];
 
-  const fms=['普通群发','@所有人','群置顶'];
   // 客服号（朋友圈）- 默认全选
   const allSA=opts.circleServiceAccounts||[];
-  if(md.service_accounts.length===0) md.service_accounts=[...allSA];
+  if(md.service_accounts.length===0 && allSA.length>0) md.service_accounts=[...allSA];
   const saHtml=allSA.map(v=>`<label class="checkbox-item ${md.service_accounts.includes(v)?'checked':''}" onclick="tck(this,'service_accounts','${v}')">${v}</label>`).join('');
-  // 官方群分类
-  const ogHtml=(opts.officialGroupCategories||[]).map(v=>`<label class="checkbox-item ${md.og_cats.includes(v)?'checked':''}" onclick="tck(this,'og_cats','${v}')">${v}</label>`).join('');
-  // 行业群分类
-  const igHtml=(opts.industryGroupCategories||[]).map(v=>`<label class="checkbox-item ${md.ig_cats.includes(v)?'checked':''}" onclick="tck(this,'ig_cats','${v}')">${v}</label>`).join('');
-  const existFiles=(md.contract_files||[]).map(f=>`<div class="file-item"><span>📄 ${f.name}</span><a href="${f.url}" target="_blank">预览</a></div>`).join('');
+  
+  // 渲染日期选择器
+  const curDates = md.circle_dates || [];
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const pickerY = pickerMonth.getFullYear(), pickerM = pickerMonth.getMonth() + 1;
+  const firstDay = new Date(pickerMonth);
+  firstDay.setDate(1);
+  const firstDow = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
+  firstDay.setDate(firstDay.getDate() - (firstDow - 1));
+  const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+  
+  let cells = '';
+  for (let i = 0; i < 42; i++) {
+    var d = new Date(firstDay);
+    d.setDate(firstDay.getDate() + i);
+    var ds = fmtDate(d);
+    var isCurrentMonth = d.getMonth() + 1 === pickerM;
+    var isSelected = curDates.indexOf(ds) >= 0;
+    var isTodayD = d >= today;
+    var classes = ['date-picker-cell'];
+    if (isSelected) classes.push('selected');
+    if (!isCurrentMonth) classes.push('other-month');
+    if (isTodayD && isCurrentMonth) classes.push('today');
+    var disabled = !isTodayD || !isCurrentMonth ? ' style="opacity:0.3;pointer-events:none"' : '';
+    var wday = WEEKDAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1];
+    cells += '<div class="' + classes.join(' ') + '"' + disabled + ' onclick="toggleCircleDate(\'' + ds + '\', this)">' +
+      '<span class="dp-day">' + d.getDate() + '</span>' +
+      '<span class="dp-week">' + wday + '</span>' +
+      '</div>';
+  }
+
+  const datePickerHtml = '<div class="date-picker-wrap">' +
+    '<div class="date-picker-nav">' +
+    '<button class="date-picker-nav-btn" onclick="changeCirclePickerMonth(-1)">&#8249;</button>' +
+    '<span class="date-picker-title">' + pickerY + '年' + pickerM + '月</span>' +
+    '<button class="date-picker-nav-btn" onclick="changeCirclePickerMonth(1)">&#8250;</button>' +
+    '</div>' +
+    '<div class="date-picker-grid">' +
+    WEEKDAY_LABELS.map(function(w) { return '<div style="text-align:center;padding:6px 0;font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:1px solid #f1f5f9">周' + w + '</div>'; }).join('') +
+    cells +
+    '</div></div>';
 
   document.getElementById('sch-modal-body').innerHTML=`
     <div class="step-bar">
       <div class="step-dot done" onclick="renderStep1()" title="返回第一步" style="cursor:pointer">✓</div>
       <div class="step-line done"></div>
       <div class="step-dot active">2</div>
+      <div class="step-line" id="sl2"></div>
+      <div class="step-dot" id="sd3">3</div>
     </div>
 
     <div style="margin-bottom:14px">
       <button style="padding:5px 14px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-muted)" onclick="renderStep1()">← 返回上一步</button>
     </div>
 
-    <div class="section-title">📢 朋友圈</div>
+    <div class="section-title">📢 朋友圈宣传</div>
     <div class="form-group">
-      <label>客服号（可多选，默认全选）</label>
+      <label class="required">客服号（可多选）</label>
       <div class="checkbox-group" id="f_service">${saHtml}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>
+      ${allSA.length === 0 ? '<div style="font-size:11px;color:var(--warning);margin-top:4px">⚠️ 暂无客服号选项，请到"选项管理"中添加</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>'}
     </div>
     <div class="form-group">
-      <label>是否发红包</label>
-      <select class="form-input" id="f_chb">
-        <option value="">请选择</option>
-        <option value="true" ${md.has_hongbao_circle===true||md.has_hongbao_circle==='true'?'selected':''}>是</option>
-        <option value="false" ${md.has_hongbao_circle===false||md.has_hongbao_circle==='false'?'selected':''}>否</option>
-      </select>
-    </div>
-
-    <div class="section-title">📣 官方群</div>
-    <div class="form-group">
-      <label>群分类（可多选）</label>
-      <div class="checkbox-group" id="f_ogcats">${ogHtml||'<span style="color:#94a3b8;font-size:12px">暂无选项，请到"管理控制台→选项管理"中添加</span>'}</div>
+      <label class="required">宣发日期（可多选）</label>
+      <div id="circle_dates_wrap">${datePickerHtml}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
     </div>
     <div class="form-group">
-      <label>数据类型</label>
-      <select class="form-input" id="f_odt"><option value="">请选择</option>${opts.officialGroupDataTypes.map(d=>`<option value="${d}" ${md.official_group_data_type===d?'selected':''}>${d}</option>`).join('')}</select>
-    </div>
-    <div class="form-group">
-      <label>宣传形式（可多选）</label>
-      <div class="checkbox-group" id="f_pf">
-        ${fms.map(f=>`<label class="checkbox-item ${(md.publish_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'publish_forms','${f}')">${f}</label>`).join('')}
+      <label class="required">是否发红包</label>
+      <div class="radio-group">
+        <label class="radio-item ${md.circle_hongbao===true||md.circle_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'circle_hongbao','true')">是</label>
+        <label class="radio-item ${md.circle_hongbao===false||md.circle_hongbao==='false'||md.circle_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'circle_hongbao','false')">否</label>
       </div>
     </div>
-    <div class="form-group">
-      <label>是否发红包</label>
-      <select class="form-input" id="f_ohb">
-        <option value="">请选择</option>
-        <option value="true" ${md.has_hongbao_official===true||md.has_hongbao_official==='true'?'selected':''}>是</option>
-        <option value="false" ${md.has_hongbao_official===false||md.has_hongbao_official==='false'?'selected':''}>否</option>
-      </select>
+  `;
+  document.getElementById('sch-next-btn').textContent='下一步 →';
+  document.getElementById('sch-next-btn').onclick=step2Next;
+}
+
+function toggleCircleDate(ds, el) {
+  if (!md.circle_dates) md.circle_dates = [];
+  var idx = md.circle_dates.indexOf(ds);
+  if (idx >= 0) {
+    md.circle_dates.splice(idx, 1);
+    el.classList.remove('selected');
+  } else {
+    md.circle_dates.push(ds);
+    el.classList.add('selected');
+  }
+}
+
+function changeCirclePickerMonth(delta) {
+  var x = new Date(pickerMonth);
+  x.setMonth(x.getMonth() + delta);
+  pickerMonth = new Date(x.getFullYear(), x.getMonth(), 1);
+  renderStep2();
+}
+
+function selectRadio(el, field, value) {
+  document.querySelectorAll(`#sch-modal-body .radio-item`).forEach(item => {
+    item.classList.remove('selected');
+  });
+  el.classList.add('selected');
+  md[field] = value === 'true';
+}
+
+function step2Next() {
+  // 验证客服号
+  const serviceAccounts = md.service_accounts || [];
+  if (serviceAccounts.length === 0) return toast('请至少选择一个客服号', 'error');
+  
+  // 验证宣发日期
+  if (!md.circle_dates || md.circle_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
+  
+  // 验证是否发红包
+  if (md.circle_hongbao === undefined) return toast('请选择是否发红包', 'error');
+  
+  // 更新步骤指示器
+  document.getElementById('sd3').className='step-dot active';
+  document.getElementById('sl2').className='step-line done';
+  renderStep3();
+}
+
+function renderStep3() {
+  if(!Array.isArray(md.community_groups)) md.community_groups=j(md.community_group_details||'[]');
+  if(!Array.isArray(md.community_dates)) md.community_dates = md.dates ? [...md.dates] : [];
+  if(!Array.isArray(md.community_forms)) md.community_forms=j(md.community_publish_forms||'[]');
+
+  // 群明细（社群）- 默认全选
+  const allGroups=opts.communityGroups||[];
+  if(md.community_groups.length===0 && allGroups.length>0) md.community_groups=[...allGroups];
+  const groupHtml=allGroups.map(v=>`<label class="checkbox-item ${md.community_groups.includes(v)?'checked':''}" onclick="tck(this,'community_groups','${v}')">${v}</label>`).join('');
+  
+  // 宣传形式
+  const fms=['普通群发','@所有人','群置顶'];
+  const formHtml=fms.map(f=>`<label class="checkbox-item ${(md.community_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'community_forms','${f}')">${f}</label>`).join('');
+  
+  // 渲染日期选择器
+  const curDates = md.community_dates || [];
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const pickerY = pickerMonth.getFullYear(), pickerM = pickerMonth.getMonth() + 1;
+  const firstDay = new Date(pickerMonth);
+  firstDay.setDate(1);
+  const firstDow = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
+  firstDay.setDate(firstDay.getDate() - (firstDow - 1));
+  const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+  
+  let cells = '';
+  for (let i = 0; i < 42; i++) {
+    var d = new Date(firstDay);
+    d.setDate(firstDay.getDate() + i);
+    var ds = fmtDate(d);
+    var isCurrentMonth = d.getMonth() + 1 === pickerM;
+    var isSelected = curDates.indexOf(ds) >= 0;
+    var isTodayD = d >= today;
+    var classes = ['date-picker-cell'];
+    if (isSelected) classes.push('selected');
+    if (!isCurrentMonth) classes.push('other-month');
+    if (isTodayD && isCurrentMonth) classes.push('today');
+    var disabled = !isTodayD || !isCurrentMonth ? ' style="opacity:0.3;pointer-events:none"' : '';
+    var wday = WEEKDAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1];
+    cells += '<div class="' + classes.join(' ') + '"' + disabled + ' onclick="toggleCommunityDate(\'' + ds + '\', this)">' +
+      '<span class="dp-day">' + d.getDate() + '</span>' +
+      '<span class="dp-week">' + wday + '</span>' +
+      '</div>';
+  }
+
+  const datePickerHtml = '<div class="date-picker-wrap">' +
+    '<div class="date-picker-nav">' +
+    '<button class="date-picker-nav-btn" onclick="changeCommunityPickerMonth(-1)">&#8249;</button>' +
+    '<span class="date-picker-title">' + pickerY + '年' + pickerM + '月</span>' +
+    '<button class="date-picker-nav-btn" onclick="changeCommunityPickerMonth(1)">&#8250;</button>' +
+    '</div>' +
+    '<div class="date-picker-grid">' +
+    WEEKDAY_LABELS.map(function(w) { return '<div style="text-align:center;padding:6px 0;font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:1px solid #f1f5f9">周' + w + '</div>'; }).join('') +
+    cells +
+    '</div></div>';
+
+  // 已存在的文件
+  const existFiles=(md.contract_files||[]).map(f=>`<div class="file-item"><span>📄 ${f.name}</span><a href="${f.url}" target="_blank">预览</a><button onclick="removeExistingFile('${f.name}')" style="background:none;border:none;color:#ef4444;cursor:pointer;margin-left:8px;font-size:12px">删除</button></div>`).join('');
+
+  document.getElementById('sch-modal-body').innerHTML=`
+    <div class="step-bar">
+      <div class="step-dot done" onclick="renderStep1()" title="返回第一步" style="cursor:pointer">✓</div>
+      <div class="step-line done"></div>
+      <div class="step-dot done" onclick="renderStep2()" title="返回第二步" style="cursor:pointer">✓</div>
+      <div class="step-line done"></div>
+      <div class="step-dot active">3</div>
     </div>
 
-    <div class="section-title">🌐 行业&地区群</div>
+    <div style="margin-bottom:14px">
+      <button style="padding:5px 14px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-muted)" onclick="renderStep2()">← 返回上一步</button>
+    </div>
+
+    <div class="section-title">📣 社群宣传</div>
     <div class="form-group">
-      <label>群分类（可多选）</label>
-      <div class="checkbox-group" id="f_igcats">${igHtml||'<span style="color:#94a3b8;font-size:12px">暂无选项，请到"管理控制台→选项管理"中添加</span>'}</div>
+      <label class="required">群明细（可多选）</label>
+      <div class="checkbox-group" id="f_community">${groupHtml}</div>
+      ${allGroups.length === 0 ? '<div style="font-size:11px;color:var(--warning);margin-top:4px">⚠️ 暂无群明细选项，请到"选项管理"中添加</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>'}
     </div>
     <div class="form-group">
-      <label>宣传形式（可多选）</label>
-      <div class="checkbox-group" id="f_igf">
-        ${fms.map(f=>`<label class="checkbox-item ${(md.industry_group_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'industry_group_forms','${f}')">${f}</label>`).join('')}
+      <label class="required">宣发日期（可多选）</label>
+      <div id="community_dates_wrap">${datePickerHtml}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
+    </div>
+    <div class="form-group">
+      <label class="required">宣传形式（可多选）</label>
+      <div class="checkbox-group" id="f_community_forms">${formHtml}</div>
+    </div>
+    <div class="form-group">
+      <label class="required">是否发红包</label>
+      <div class="radio-group">
+        <label class="radio-item ${md.community_hongbao===true||md.community_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'community_hongbao','true')">是</label>
+        <label class="radio-item ${md.community_hongbao===false||md.community_hongbao==='false'||md.community_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'community_hongbao','false')">否</label>
       </div>
-    </div>
-    <div class="form-group">
-      <label>是否发红包</label>
-      <select class="form-input" id="f_ihb">
-        <option value="">请选择</option>
-        <option value="true" ${md.has_hongbao_industry===true||md.has_hongbao_industry==='true'?'selected':''}>是</option>
-        <option value="false" ${md.has_hongbao_industry===false||md.has_hongbao_industry==='false'?'selected':''}>否</option>
-      </select>
     </div>
 
     <div class="section-title">📎 合同文件</div>
@@ -1052,64 +1187,109 @@ function renderStep2Spon() {
       </div>
       <div id="f_filelist">${existFiles}</div>
     </div>
+
+    <div class="section-title">📸 截图要求</div>
     <div class="form-group">
-      <label>截图要求</label>
-      <input class="form-input" id="f_screenshot" value="${md.screenshot_requirement||''}" placeholder="请输入截图要求说明">
+      <textarea class="form-input" id="f_screenshot" rows="3" placeholder="请输入截图要求说明（可选）">${md.screenshot_requirement||''}</textarea>
     </div>
   `;
   document.getElementById('sch-next-btn').textContent=editingId?'保存修改 ✓':'提交保存 ✓';
-  document.getElementById('sch-next-btn').onclick=submitSpon;
+  document.getElementById('sch-next-btn').onclick=submitSchedule;
 }
 
-function renderStep2Exchange() {
-  const ind=opts.industryNeeds.map(d=>`<option value="${d}" ${md.industry_need===d?'selected':''}>${d}</option>`).join('');
-  const reg=opts.regionNeeds.map(d=>`<option value="${d}" ${md.region_need===d?'selected':''}>${d}</option>`).join('');
+function toggleCommunityDate(ds, el) {
+  if (!md.community_dates) md.community_dates = [];
+  var idx = md.community_dates.indexOf(ds);
+  if (idx >= 0) {
+    md.community_dates.splice(idx, 1);
+    el.classList.remove('selected');
+  } else {
+    md.community_dates.push(ds);
+    el.classList.add('selected');
+  }
+}
 
-  document.getElementById('sch-modal-body').innerHTML=`
-    <div class="step-bar">
-      <div class="step-dot done" onclick="renderStep1()" title="返回第一步" style="cursor:pointer">✓</div>
-      <div class="step-line done"></div>
-      <div class="step-dot active">2</div>
-    </div>
+function changeCommunityPickerMonth(delta) {
+  var x = new Date(pickerMonth);
+  x.setMonth(x.getMonth() + delta);
+  pickerMonth = new Date(x.getFullYear(), x.getMonth(), 1);
+  renderStep3();
+}
 
-    <div style="margin-bottom:14px">
-      <button style="padding:5px 14px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-muted)" onclick="renderStep1()">← 返回上一步</button>
-    </div>
+function removeExistingFile(fileName) {
+  if(!confirm('确定删除该文件？')) return;
+  md.contract_files = (md.contract_files || []).filter(f => f.name !== fileName);
+  renderStep3();
+}
 
-    <div class="section-title">🔄 置换信息</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>我方宣发群数量</label>
-        <input class="form-input" id="f_ourCnt" type="number" min="0" value="${md.our_group_count||''}" placeholder="数量">
-      </div>
-      <div class="form-group">
-        <label>行业需求</label>
-        <select class="form-input" id="f_ind"><option value="">请选择</option>${ind}</select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>地区需求</label>
-        <select class="form-input" id="f_reg"><option value="">请选择</option>${reg}</select>
-      </div>
-      <div class="form-group">
-        <label>对方宣传群数量</label>
-        <input class="form-input" id="f_theirCnt" type="number" min="0" value="${md.their_group_count||''}" placeholder="数量">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>对方宣传覆盖总人数</label>
-        <input class="form-input" id="f_theirPpl" type="number" min="0" value="${md.their_total_people||''}" placeholder="人数">
-      </div>
-      <div class="form-group">
-        <label>我方宣传覆盖总人数</label>
-        <input class="form-input" id="f_ourPpl" type="number" min="0" value="${md.our_total_people||''}" placeholder="人数">
-      </div>
-    </div>
-  `;
-  document.getElementById('sch-next-btn').textContent=editingId?'保存修改 ✓':'提交保存 ✓';
-  document.getElementById('sch-next-btn').onclick=submitExch;
+async function submitSchedule() {
+  // 验证群明细
+  const communityGroups = md.community_groups || [];
+  if (communityGroups.length === 0) return toast('请至少选择一个群明细', 'error');
+  
+  // 验证宣发日期
+  if (!md.community_dates || md.community_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
+  
+  // 验证宣传形式
+  const communityForms = md.community_forms || [];
+  if (communityForms.length === 0) return toast('请至少选择一个宣传形式', 'error');
+  
+  // 验证是否发红包
+  if (md.community_hongbao === undefined) return toast('请选择是否发红包', 'error');
+  
+  // 收集所有数据
+  const screenshotReq = document.getElementById('f_screenshot').value.trim();
+  const existingFiles = Array.isArray(md.contract_files) ? md.contract_files : [];
+  const newFiles = pendingFiles.map(f => ({name: f.name, url: URL.createObjectURL(f), size: f.size}));
+  const allFiles = [...existingFiles, ...newFiles];
+  
+  // 合并所有宣发日期（朋友圈 + 社群）
+  const allDates = [...new Set([...(md.circle_dates || []), ...(md.community_dates || [])])];
+  const total = allDates.length;
+  
+  if (total > 30) { toast('批量数量不超过30条，请减少选择', 'error'); return; }
+  
+  let count = 0;
+  showLoading(true);
+  
+  try {
+    for (const d of allDates) {
+      const payload = {
+        activity_name: md.activity_name,
+        department: md.department,
+        activity_type: md.activity_type,
+        owner: md.owner,
+        date: d,
+        // 朋友圈数据
+        circle_service_accounts: JSON.stringify(md.service_accounts || []),
+        circle_publish_dates: JSON.stringify(md.circle_dates || []),
+        has_hongbao_circle: md.circle_hongbao,
+        // 社群数据
+        community_group_details: JSON.stringify(md.community_groups || []),
+        community_publish_dates: JSON.stringify(md.community_dates || []),
+        community_publish_forms: JSON.stringify(md.community_forms || []),
+        has_hongbao_community: md.community_hongbao,
+        // 合同及截图
+        contract_files: JSON.stringify(allFiles),
+        screenshot_requirement: screenshotReq,
+        // 时间戳
+        created_by: currentUser.id,
+        updated_at: new Date().toISOString()
+      };
+      
+      await api('POST', 'bj_schedules', '', payload);
+      count++;
+    }
+    
+    toast(`已提交 ${count} 条排期`, 'success');
+    closeModal('sch-modal');
+    pendingFiles = [];
+    showLoading(false);
+    await refreshCalendar();
+  } catch(e) {
+    showLoading(false);
+    toast('保存失败：' + e.message, 'error');
+  }
 }
 
 function tck(el, field, value) {
@@ -1125,143 +1305,14 @@ function pickFiles(e) {
   const list=document.getElementById('f_filelist');
   files.forEach(f=>{
     const d=document.createElement('div'); d.className='file-item';
-    d.innerHTML=`<span>📄 ${f.name}</span><span style="color:var(--text-muted);font-size:11px">待上传</span>`;
+    d.innerHTML=`<span>📄 ${f.name}</span><span style="color:var(--text-muted);font-size:11px">待上传</span><button onclick="removePendingFile(this,'${f.name}')" style="background:none;border:none;color:#ef4444;cursor:pointer;margin-left:8px;font-size:12px">删除</button>`;
     list.appendChild(d);
   });
 }
 
-async function submitSpon() {
-  // 商务类型：合同文件必填
-  if(md.activity_type==='商务') {
-    const hasExisting = Array.isArray(md.contract_files) && md.contract_files.length > 0;
-    if(!hasExisting && pendingFiles.length === 0) {
-      return toast('商务类型需上传合同文件','error');
-    }
-  }
-  // 收集 Step2 字段，存入 md，再调用批量提交
-  md.service_accounts = md.service_accounts||[];
-  md.og_cats = md.og_cats||[];
-  md.ig_cats = md.ig_cats||[];
-  md.f_chb = document.getElementById('f_chb').value;
-  md.f_odt = document.getElementById('f_odt').value;
-  md.f_ohb = document.getElementById('f_ohb').value;
-  md.f_ihb = document.getElementById('f_ihb').value;
-  md.f_screenshot = document.getElementById('f_screenshot').value;
-  const existingFiles=Array.isArray(md.contract_files)?md.contract_files:[];
-  const newFiles=pendingFiles.map(f=>({name:f.name,url:URL.createObjectURL(f),size:f.size}));
-  md._files = [...existingFiles,...newFiles];
-  doBatchSpon();
-}
-
-function doBatchSpon() {
-  const dates = md.dates||[md.date].filter(Boolean);
-  const slots = md.slots||[md.time_slot].filter(Boolean);
-  const total = dates.length * slots.length;
-  if(total > 30) { toast('批量数量不超过30条，请减少选择','error'); return; }
-  let count = 0;
-  showLoading(true);
-  (async () => {
-    try {
-      for(const d of dates) {
-        for(const s of slots) {
-          const payload = {
-            activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
-            owner:md.owner, date:d, time_slot:s,
-            circle_service_accounts:JSON.stringify(md.service_accounts),
-            has_hongbao_circle:md.f_chb==='true',
-            is_circle_push:['noon','afternoon_circle'].includes(s),
-            official_group_categories:JSON.stringify(md.og_cats),
-            official_group_data_type:md.f_odt,
-            publish_forms:JSON.stringify(md.publish_forms||[]),
-            has_hongbao_official:md.f_ohb==='true',
-            industry_group_categories:JSON.stringify(md.ig_cats),
-            industry_group_forms:JSON.stringify(md.industry_group_forms||[]),
-            has_hongbao_industry:md.f_ihb==='true',
-            contract_files:JSON.stringify(md._files||[]),
-            screenshot_requirement:md.f_screenshot,
-            created_by:currentUser.id, updated_at:new Date().toISOString()
-          };
-          await _doSubmit(payload, false);
-          count++;
-        }
-      }
-      toast(`已提交 ${count} 条排期`,'success');
-      closeModal('sch-modal'); pendingFiles=[];
-      showLoading(false);
-      await refreshCalendar();
-    } catch(e) { showLoading(false); toast('保存失败：'+e.message,'error'); }
-  })();
-}
-
-async function submitExch() {
-  md.f_ourCnt = parseInt(document.getElementById('f_ourCnt').value)||0;
-  md.f_ind = document.getElementById('f_ind').value;
-  md.f_reg = document.getElementById('f_reg').value;
-  md.f_theirCnt = parseInt(document.getElementById('f_theirCnt').value)||0;
-  md.f_theirPpl = parseInt(document.getElementById('f_theirPpl').value)||0;
-  md.f_ourPpl = parseInt(document.getElementById('f_ourPpl').value)||0;
-  doBatchExch();
-}
-
-function doBatchExch() {
-  const dates = md.dates||[md.date].filter(Boolean);
-  const slots = md.slots||[md.time_slot].filter(Boolean);
-  const total = dates.length * slots.length;
-  if(total > 30) { toast('批量数量不超过30条，请减少选择','error'); return; }
-  let count = 0;
-  showLoading(true);
-  (async () => {
-    try {
-      for(const d of dates) {
-        for(const s of slots) {
-          const payload = {
-            activity_name:md.activity_name, department:md.department, activity_type:md.activity_type,
-            owner:md.owner, date:d, time_slot:s,
-            our_group_count:md.f_ourCnt,
-            industry_need:md.f_ind,
-            region_need:md.f_reg,
-            their_group_count:md.f_theirCnt,
-            their_total_people:md.f_theirPpl,
-            our_total_people:md.f_ourPpl,
-            created_by:currentUser.id, updated_at:new Date().toISOString()
-          };
-          await _doSubmit(payload, false);
-          count++;
-        }
-      }
-      toast(`已提交 ${count} 条排期`,'success');
-      closeModal('sch-modal');
-      showLoading(false);
-      await refreshCalendar();
-    } catch(e) { showLoading(false); toast('保存失败：'+e.message,'error'); }
-  })();
-}
-
-// _doSubmit: 单条记录提交（内部使用）
-async function _doSubmit(payload, isEdit=true) {
-  if(payload.activity_type==='赞助'||payload.activity_type==='商务') {
-    const existing=await api('GET','bj_schedules',`?activity_name=eq.${encodeURIComponent(payload.activity_name)}&activity_type=eq.${encodeURIComponent(payload.activity_type)}`);
-    const others=isEdit&&editingId?existing.filter(e=>e.id!==editingId):existing;
-    if(['noon','afternoon_circle'].includes(payload.time_slot)) {
-      const circlePushes=others.filter(e=>['noon','afternoon_circle'].includes(e.time_slot));
-      if(circlePushes.length>=2) throw new Error('朋友圈宣发已达2次上限（每个活动最多2次）');
-      if(circlePushes.length===1){
-        const diff=Math.abs(new Date(circlePushes[0].date)-new Date(payload.date))/(86400000);
-        if(diff<1) throw new Error('朋友圈宣发间隔需至少1天');
-      }
-    }
-  }
-  if(isEdit&&editingId) {
-    await api('PATCH','bj_schedules',`?id=eq.${editingId}`,payload);
-  } else {
-    payload.created_at=new Date().toISOString();
-    await api('POST','bj_schedules','',payload);
-  }
-}
-
-// 保留旧的 doSubmit（编辑模式单条提交）
-async function doSubmit(payload) {
-  await _doSubmit(payload, true);
+function removePendingFile(btn, fileName) {
+  pendingFiles = pendingFiles.filter(f => f.name !== fileName);
+  btn.parentElement.remove();
 }
 
 // ===== DETAIL MODAL =====
@@ -1275,15 +1326,17 @@ async function openDetail(id, e) {
     if(!data||!data[0]){showLoading(false);toast('数据不存在','error');return;}
     const ev=data[0];
     showLoading(false);
-    const sm={morning:'上午群推送',noon:'中午发圈',afternoon:'下午群推送',afternoon_circle:'下午发圈'};
     const tc={'赞助':'#f59e0b','商务':'#10b981','置换':'#8b5cf6'};
-    const pf=j(ev.publish_forms||'[]'), igf=j(ev.industry_group_forms||'[]');
-    const sa=j(ev.circle_service_accounts||'[]'), ogc=j(ev.official_group_categories||'[]'), igc=j(ev.industry_group_categories||'[]');
-    const cf=j(ev.contract_files||'[]');
+    const sa=j(ev.circle_service_accounts||'[]');
+    const cd=j(ev.circle_publish_dates||'[]');
+    const cg=j(ev.community_group_details||'[]');
+    const cfd=j(ev.community_publish_dates||'[]');
+    const cf=j(ev.community_publish_forms||'[]');
+    const files=j(ev.contract_files||'[]');
     
     let b=`<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
       <div style="flex:1"><div style="font-size:19px;font-weight:800">${ev.activity_name}</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${ev.date} · ${sm[ev.time_slot]||ev.time_slot}</div></div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${ev.date}</div></div>
       <span style="background:${(tc[ev.activity_type]||'#2563eb')}20;color:${tc[ev.activity_type]||'#2563eb'};padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${ev.activity_type}</span>
     </div>`;
     
@@ -1292,36 +1345,28 @@ async function openDetail(id, e) {
       <div class="detail-row"><span class="detail-label">负责人</span><span class="detail-value">${ev.owner}</span></div>
     </div>`;
     
-    if(ev.activity_type==='赞助'||ev.activity_type==='商务') {
-      b+=`<div class="detail-section"><h4>📢 朋友圈</h4>
-        <div class="detail-row"><span class="detail-label">客服号</span><span class="detail-value">${sa.join('、')||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle?'✅ 是':'否'}</span></div>
-      </div>
-      <div class="detail-section"><h4>📣 官方群</h4>
-        <div class="detail-row"><span class="detail-label">群分类</span><span class="detail-value">${ogc.join('、')||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">数据类型</span><span class="detail-value">${ev.official_group_data_type||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${pf.join('、')||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_official?'✅ 是':'否'}</span></div>
-      </div>
-      <div class="detail-section"><h4>🌐 行业&地区群</h4>
-        <div class="detail-row"><span class="detail-label">群分类</span><span class="detail-value">${igc.join('、')||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${igf.join('、')||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_industry?'✅ 是':'否'}</span></div>
-      </div>`;
-      if(ev.screenshot_requirement||cf.length>0) {
-        b+=`<div class="detail-section"><h4>📎 合同及截图</h4>
-          ${ev.screenshot_requirement?`<div class="detail-row"><span class="detail-label">截图要求</span><span class="detail-value">${ev.screenshot_requirement}</span></div>`:''}
-          ${cf.length?`<div class="detail-row"><span class="detail-label">合同文件</span><span class="detail-value">${cf.map(f=>`<a href="${f.url}" target="_blank">📄 ${f.name}</a>`).join('<br>')}</span></div>`:''}
+    if(sa.length>0 || cg.length>0) {
+      if(sa.length>0) {
+        b+=`<div class="detail-section"><h4>📢 朋友圈宣传</h4>
+          <div class="detail-row"><span class="detail-label">客服号</span><span class="detail-value">${sa.join('、')}</span></div>
+          <div class="detail-row"><span class="detail-label">宣发日期</span><span class="detail-value">${cd.join('、')||'-'}</span></div>
+          <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle?'✅ 是':'❌ 否'}</span></div>
         </div>`;
       }
-    } else if(ev.activity_type==='置换') {
-      b+=`<div class="detail-section"><h4>🔄 置换信息</h4>
-        <div class="detail-row"><span class="detail-label">我方宣发群数量</span><span class="detail-value">${ev.our_group_count||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">行业需求</span><span class="detail-value">${ev.industry_need||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">地区需求</span><span class="detail-value">${ev.region_need||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">对方群数量</span><span class="detail-value">${ev.their_group_count||'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">对方覆盖人数</span><span class="detail-value">${ev.their_total_people?ev.their_total_people+'人':'-'}</span></div>
-        <div class="detail-row"><span class="detail-label">我方覆盖人数</span><span class="detail-value">${ev.our_total_people?ev.our_total_people+'人':'-'}</span></div>
+      if(cg.length>0) {
+        b+=`<div class="detail-section"><h4>📣 社群宣传</h4>
+          <div class="detail-row"><span class="detail-label">群明细</span><span class="detail-value">${cg.join('、')}</span></div>
+          <div class="detail-row"><span class="detail-label">宣发日期</span><span class="detail-value">${cfd.join('、')||'-'}</span></div>
+          <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${cf.join('、')||'-'}</span></div>
+          <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_community?'✅ 是':'❌ 否'}</span></div>
+        </div>`;
+      }
+    }
+    
+    if(ev.screenshot_requirement || files.length>0) {
+      b+=`<div class="detail-section"><h4>📎 合同及截图</h4>
+        ${ev.screenshot_requirement?`<div class="detail-row"><span class="detail-label">截图要求</span><span class="detail-value">${ev.screenshot_requirement}</span></div>`:''}
+        ${files.length?`<div class="detail-row"><span class="detail-label">合同文件</span><span class="detail-value">${files.map(f=>`<a href="${f.url}" target="_blank" style="color:var(--primary)">📄 ${f.name}</a>`).join('<br>')}</span></div>`:''}
       </div>`;
     }
     
@@ -1406,12 +1451,7 @@ async function setUserRole(id, role) {
 const OPT_CATS=[
   {k:'departments',l:'活动部门'},
   {k:'circleServiceAccounts',l:'朋友圈 · 客服号'},
-  {k:'officialGroupDataTypes',l:'官方群'},
-  {k:'officialGroupCategories',l:'官方群 · 群分类'},
-  {k:'industryRegionGroups',l:'行业&地区群'},
-  {k:'industryGroupCategories',l:'行业群 · 群分类'},
-  {k:'industryNeeds',l:'行业'},
-  {k:'regionNeeds',l:'地区'},
+  {k:'communityGroups',l:'社群 · 群明细'},
 ];
 
 function renderOptsPanel() {
