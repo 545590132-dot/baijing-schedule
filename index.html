@@ -1269,12 +1269,25 @@ async function submitSchedule() {
   
   try {
     for (const d of allDates) {
+      // 判断这一天属于朋友圈还是社群
+      const isCircleDate = (md.circle_dates || []).includes(d);
+      const isCommunityDate = (md.community_dates || []).includes(d);
+      
+      // 根据日期来源决定时段
+      let slot = '';
+      if (isCircleDate && md.circle_time_slot) {
+        slot = md.circle_time_slot;
+      } else if (isCommunityDate && md.community_time_slot) {
+        slot = md.community_time_slot;
+      }
+      
       const payload = {
         activity_name: md.activity_name,
         department: md.department,
         activity_type: md.activity_type,
         owner: md.owner,
         date: d,
+        time_slot: slot || '下午发圈', // 默认值
         // 朋友圈数据
         circle_service_accounts: JSON.stringify(md.service_accounts || []),
         circle_publish_dates: JSON.stringify(md.circle_dates || []),
