@@ -888,17 +888,11 @@ function renderStep1() {
       <label class="required">负责人</label>
       <input class="form-input" id="f_owner" value="${md.owner||''}" placeholder="姓名">
     </div>
-    <div class="form-group">
-      <label class="required">宣发日期（可多选）</label>
-      <div id="f_dates"></div>
-    </div>
     <div id="type-tip"></div>
   `;
   document.getElementById('sch-next-btn').textContent='下一步 →';
   document.getElementById('sch-next-btn').onclick=step1Next;
   updateTypeTip();
-  // 渲染日历日期选择器
-  setTimeout(function() { try { renderDatePicker(); } catch(e) { console.error('renderDatePicker error:', e); } }, 50);
 }
 
 function toggleDate(el, ds) {
@@ -931,20 +925,8 @@ function step1Next() {
   const dept=document.getElementById('f_dept').value;
   const type=document.getElementById('f_type').value;
   const owner=document.getElementById('f_owner').value.trim();
-  // 收集选中的日期（从 md.dates 获取，并兼容 DOM 中的 selected 状态）
-  const domSelected = document.querySelectorAll('#f_dates .date-picker-cell.selected');
-  const domDates = Array.from(domSelected).map(el => {
-    // 从 onclick 属性提取日期: togglePickerDate('2026-05-20', this)
-    var match = el.getAttribute('onclick').match(/'([^']+)'/);
-    return match ? match[1] : null;
-  }).filter(Boolean);
-  const dates = domDates.length > 0 ? domDates : (md.dates || []);
   if(!name||!dept||!type||!owner) return toast('请填写所有必填项','error');
-  if(!dates.length) return toast('请至少选择一天','error');
-  // 同步 md.dates
-  md.dates = dates;
-  md.activity_name=name; md.department=dept; md.activity_type=type;
-  md.owner=owner; md.dates=dates;
+  md.activity_name=name; md.department=dept; md.activity_type=type; md.owner=owner;
   document.getElementById('sd2').className='step-dot active';
   document.getElementById('sl1').className='step-line done';
   document.getElementById('sd3').className='step-dot';
@@ -954,7 +936,8 @@ function step1Next() {
 
 function renderStep2() {
   if(!Array.isArray(md.service_accounts)) md.service_accounts=j(md.circle_service_accounts||'[]');
-  if(!Array.isArray(md.circle_dates)) md.circle_dates = md.dates ? [...md.dates] : [];
+  if(!Array.isArray(md.circle_dates)) md.circle_dates=[];
+  if(!md.circle_time_slot) md.circle_time_slot='';
 
   // 客服号（朋友圈）- 默认全选
   const allSA=opts.circleServiceAccounts||[];
@@ -1028,6 +1011,13 @@ function renderStep2() {
       <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
     </div>
     <div class="form-group">
+      <label class="required">宣发时段</label>
+      <div class="radio-group">
+        <label class="radio-item ${md.circle_time_slot==='上午发圈'?'selected':''}" onclick="selectRadio(this,'circle_time_slot','上午发圈')">上午发圈</label>
+        <label class="radio-item ${md.circle_time_slot==='下午发圈'?'selected':''}" onclick="selectRadio(this,'circle_time_slot','下午发圈')">下午发圈</label>
+      </div>
+    </div>
+    <div class="form-group">
       <label class="required">是否发红包</label>
       <div class="radio-group">
         <label class="radio-item ${md.circle_hongbao===true||md.circle_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'circle_hongbao','true')">是</label>
@@ -1074,6 +1064,9 @@ function step2Next() {
   // 验证宣发日期
   if (!md.circle_dates || md.circle_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
   
+  // 验证宣发时段
+  if (!md.circle_time_slot) return toast('请选择宣发时段', 'error');
+  
   // 验证是否发红包
   if (md.circle_hongbao === undefined) return toast('请选择是否发红包', 'error');
   
@@ -1085,8 +1078,9 @@ function step2Next() {
 
 function renderStep3() {
   if(!Array.isArray(md.community_groups)) md.community_groups=j(md.community_group_details||'[]');
-  if(!Array.isArray(md.community_dates)) md.community_dates = md.dates ? [...md.dates] : [];
+  if(!Array.isArray(md.community_dates)) md.community_dates=[];
   if(!Array.isArray(md.community_forms)) md.community_forms=j(md.community_publish_forms||'[]');
+  if(!md.community_time_slot) md.community_time_slot='';
 
   // 群明细（社群）- 默认全选
   const allGroups=opts.communityGroups||[];
@@ -1167,6 +1161,13 @@ function renderStep3() {
       <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
     </div>
     <div class="form-group">
+      <label class="required">宣发时段</label>
+      <div class="radio-group">
+        <label class="radio-item ${md.community_time_slot==='上午群发'?'selected':''}" onclick="selectRadio(this,'community_time_slot','上午群发')">上午群发</label>
+        <label class="radio-item ${md.community_time_slot==='下午群发'?'selected':''}" onclick="selectRadio(this,'community_time_slot','下午群发')">下午群发</label>
+      </div>
+    </div>
+    <div class="form-group">
       <label class="required">宣传形式（可多选）</label>
       <div class="checkbox-group" id="f_community_forms">${formHtml}</div>
     </div>
@@ -1230,6 +1231,9 @@ async function submitSchedule() {
   // 验证宣发日期
   if (!md.community_dates || md.community_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
   
+  // 验证宣发时段
+  if (!md.community_time_slot) return toast('请选择社群宣发时段', 'error');
+  
   // 验证宣传形式
   const communityForms = md.community_forms || [];
   if (communityForms.length === 0) return toast('请至少选择一个宣传形式', 'error');
@@ -1263,10 +1267,12 @@ async function submitSchedule() {
         // 朋友圈数据
         circle_service_accounts: JSON.stringify(md.service_accounts || []),
         circle_publish_dates: JSON.stringify(md.circle_dates || []),
+        circle_time_slot: md.circle_time_slot || '',
         has_hongbao_circle: md.circle_hongbao,
         // 社群数据
         community_group_details: JSON.stringify(md.community_groups || []),
         community_publish_dates: JSON.stringify(md.community_dates || []),
+        community_time_slot: md.community_time_slot || '',
         community_publish_forms: JSON.stringify(md.community_forms || []),
         has_hongbao_community: md.community_hongbao,
         // 合同及截图
