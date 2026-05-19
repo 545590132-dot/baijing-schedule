@@ -210,6 +210,25 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .hidden{display:none!important}
+/* 搜索高亮 */
+.search-highlight{background:#fef08a;color:#92400e;padding:0 2px;border-radius:3px;font-weight:600}
+
+/* 日历日期选择器 */
+.date-picker-wrap{background:#fff;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;margin-top:8px}
+.date-picker-nav{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff}
+.date-picker-nav-btn{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.date-picker-nav-btn:hover{background:rgba(255,255,255,.35)}
+.date-picker-title{font-size:14px;font-weight:700}
+.date-picker-grid{display:grid;grid-template-columns:repeat(7,1fr);background:#fff}
+.date-picker-cell{text-align:center;padding:8px 4px;border:1px solid #f1f5f9;font-size:12px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.date-picker-cell:hover{background:#eff6ff}
+.date-picker-cell.selected{background:#dcfce7;border-color:#16a34a}
+.date-picker-cell.today .dp-day{background:var(--primary);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+.date-picker-cell.other-month{opacity:.4}
+.date-picker-cell .dp-day{font-size:13px;font-weight:600;color:var(--text)}
+.date-picker-cell .dp-week{font-size:9px;color:#94a3b8;margin-top:1px}
+.date-picker-cell.selected .dp-day{color:#16a34a;font-weight:700}
+
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
 </style>
@@ -367,6 +386,8 @@ let editingId = null;
 let md = {}; // modal data
 let pendingFiles = [];
 let searchQuery = '';
+let pickerMonth = new Date(); // 日期选择器当前月份
+
 
 // ===== UTILS =====
 function getWeekStart(d) {
@@ -669,22 +690,100 @@ function renderCalendar() {
   document.getElementById('calendar').innerHTML = h;
 }
 
+// ===== 搜索高亮辅助 =====
+function highlightText(text, query) {
+  if (!query || !text) return text;
+  var esc = query.replace(/[.*+?^$()|[]\]/g, '\$&');
+  var regex = new RegExp('(' + esc + ')', 'gi');
+  return String(text).replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
+// ===== 日期选择器 =====
+function renderDatePicker() {
+  var y = pickerMonth.getFullYear(), m = pickerMonth.getMonth() + 1;
+  var today = new Date();
+  today.setHours(0,0,0,0);
+
+  // 起始：Picker月份的第一天所在周的周一
+  var firstDay = new Date(pickerMonth);
+  firstDay.setDate(1);
+  var firstDow = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
+  firstDay.setDate(firstDay.getDate() - (firstDow - 1));
+
+  // 渲染42天（6周）
+  var WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+  var curDates = md.dates || (md.date ? [md.date] : []);
+
+  var cells = '';
+  for (var i = 0; i < 42; i++) {
+    var d = new Date(firstDay);
+    d.setDate(firstDay.getDate() + i);
+    var ds = fmtDate(d);
+    var isCurrentMonth = d.getMonth() + 1 === m;
+    var isSelected = curDates.indexOf(ds) >= 0;
+    var isTodayD = d >= today; // 今天及以后可选
+    var classes = ['date-picker-cell'];
+    if (isSelected) classes.push('selected');
+    if (!isCurrentMonth) classes.push('other-month');
+    if (isTodayD && isCurrentMonth) classes.push('today');
+    var disabled = !isTodayD || !isCurrentMonth ? ' style="opacity:0.3;pointer-events:none"' : '';
+    var wday = WEEKDAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1];
+    cells += '<div class="' + classes.join(' ') + '"' + disabled + ' onclick="togglePickerDate(\'' + ds + '\', this)">' +
+      '<span class="dp-day">' + d.getDate() + '</span>' +
+      '<span class="dp-week">' + wday + '</span>' +
+      '</div>';
+  }
+
+  document.getElementById('f_dates').innerHTML = '<div class="date-picker-wrap">' +
+    '<div class="date-picker-nav">' +
+    '<button class="date-picker-nav-btn" onclick="changePickerMonth(-1)">&#8250;</button>' +
+    '<span class="date-picker-title">' + y + '年' + m + '月</span>' +
+    '<button class="date-picker-nav-btn" onclick="changePickerMonth(1)">&#8251;</button>' +
+    '</div>' +
+    '<div class="date-picker-grid">' +
+    WEEKDAY_LABELS.map(function(w) { return '<div style="text-align:center;padding:6px 0;font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:1px solid #f1f5f9">周' + w + '</div>'; }).join('') +
+    cells +
+    '</div></div>' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>';
+}
+
+function changePickerMonth(delta) {
+  var x = new Date(pickerMonth);
+  x.setMonth(x.getMonth() + delta);
+  pickerMonth = new Date(x.getFullYear(), x.getMonth(), 1);
+  renderDatePicker();
+}
+
+function togglePickerDate(ds, el) {
+  if (!md.dates) md.dates = [];
+  var idx = md.dates.indexOf(ds);
+  if (idx >= 0) {
+    md.dates.splice(idx, 1);
+    el.classList.remove('selected');
+  } else {
+    md.dates.push(ds);
+    el.classList.add('selected');
+  }
+}
+
 function renderCard(ev) {
-  let pf=j(ev.publish_forms), igf=j(ev.industry_group_forms);
-  let tags='';
+  var pf=j(ev.publish_forms), igf=j(ev.industry_group_forms);
+  var tags='';
   if(ev.activity_type==='置换') tags+='<span class="etag etag-exchange">置换</span>';
   else {
-    if(['noon','afternoon_circle'].includes(ev.time_slot)) tags+='<span class="etag etag-circle">发圈</span>';
-    if(pf.includes('@所有人')) tags+='<span class="etag etag-mention">@全体</span>';
-    if(pf.includes('群置顶')) tags+='<span class="etag etag-top">置顶</span>';
-    if(ev.has_hongbao_circle||ev.has_hongbao_official||ev.has_hongbao_industry) tags+='<span class="etag etag-hb">🧧</span>';
+    if(['noon','afternoon_circle'].indexOf(ev.time_slot)>=0) tags+='<span class="etag etag-circle">发圈</span>';
+    if(pf.indexOf('@所有人')>=0) tags+='<span class="etag etag-mention">@全体</span>';
+    if(pf.indexOf('群置顶')>=0) tags+='<span class="etag etag-top">置顶</span>';
+    if(ev.has_hongbao_circle||ev.has_hongbao_official||ev.has_hongbao_industry) tags+='<span class="etag etag-hb">&#x1F6A7;</span>';
   }
-  const tc = ev.activity_type==='赞助'?'type-sponsor':ev.activity_type==='商务'?'type-business':ev.activity_type==='置换'?'type-exchange':'';
-  return `<div class="event-card ${tc}" onclick="openDetail(${ev.id},event)">
-    <div class="event-name">${ev.activity_name}</div>
-    <div class="event-owner">👤 ${ev.owner}</div>
-    <div class="event-tags">${tags}</div>
-  </div>`;
+  var tc = ev.activity_type==='赞助'?'type-sponsor':ev.activity_type==='商务'?'type-business':ev.activity_type==='置换'?'type-exchange':'';
+  var nameHtml = highlightText(ev.activity_name || '', searchQuery);
+  var ownerHtml = highlightText(ev.owner || '', searchQuery);
+  return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)">' +
+    '<div class="event-name">' + nameHtml + '</div>' +
+    '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
+    '<div class="event-tags">' + tags + '</div>' +
+    '</div>';
 }
 
 function dbClick(date, slot, e) {
@@ -695,6 +794,7 @@ function dbClick(date, slot, e) {
 function openAddModal(preDate='', preSlot='') {
   if(!isAdmin) return toast('管理员可操作','error');
   editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot, time_slot:preSlot};
+  pickerMonth = new Date(); // 重置日期选择器月份
   document.getElementById('sch-modal-title').textContent='新增排期';
   // 先打开 modal，再渲染内容（避免 JS 错误时 modal 卡死）
   document.getElementById('sch-modal').classList.remove('hidden');
@@ -721,6 +821,13 @@ async function openEditModal(id) {
     md.service_accounts=j(md.circle_service_accounts||'[]');
     md.og_cats=j(md.official_group_categories||'[]');
     md.ig_cats=j(md.industry_group_categories||'[]');
+    // 设置日期选择器月份为编辑日期所在月
+    if(md.date) {
+      const dParts = md.date.split('-');
+      pickerMonth = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, 1);
+    } else {
+      pickerMonth = new Date();
+    }
     document.getElementById('sch-modal-title').textContent='编辑排期';
     document.getElementById('sch-modal').classList.remove('hidden');
     showLoading(false);
@@ -741,19 +848,9 @@ function renderStep1() {
   }
   const deptOpts=deps.map(d=>`<option value="${d}" ${md.department===d?'selected':''}>${d}</option>`).join('');
 
-  // 生成日期 chip：当前月起约60天（不限当周）
-  const weekChips=[];
-  const today=new Date();
-  for(let i=0;i<60;i++){
-    const d=new Date(today); d.setDate(today.getDate()+i-3); // 从今天-3天开始
-    const ds=fmtDate(d);
-    const wday=['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
-    const isChk=curDates.includes(ds);
-    weekChips.push(`<label class="date-chip${isChk?' checked':''}" onclick="toggleDate(this,'${ds}')">
-      <input type="checkbox" style="display:none" ${isChk?'checked':''}>
-      <span class="chip-day">${wday}</span><span class="chip-num">${d.getDate()}</span>
-    </label>`);
-  }
+  // 初始化日期选择器月份
+  if(!md.dates) md.dates = (md.date ? [md.date] : []);
+  pickerMonth = new Date(); // 重置为当月
 
   document.getElementById('sch-modal-body').innerHTML=`
     <div class="step-bar">
@@ -784,8 +881,7 @@ function renderStep1() {
     </div>
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
-      <div class="date-chip-group" id="f_dates">${weekChips.join('')}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 点击选中/取消，绿色表示已选（当前月起60天内可选）</div>
+      <div id="f_dates"></div>
     </div>
     <div class="form-group">
       <label class="required">宣发时段（可多选）</label>
@@ -798,6 +894,8 @@ function renderStep1() {
   document.getElementById('sch-next-btn').textContent='下一步 →';
   document.getElementById('sch-next-btn').onclick=step1Next;
   updateTypeTip();
+  // 渲染日历日期选择器
+  setTimeout(function() { try { renderDatePicker(); } catch(e) { console.error('renderDatePicker error:', e); } }, 50);
 }
 
 function toggleDate(el, ds) {
