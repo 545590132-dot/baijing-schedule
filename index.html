@@ -60,7 +60,7 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 /* 表头 */
 .cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:6}
 .cal-hc-slot{padding:10px 4px;text-align:center;color:#fff;font-size:12px;font-weight:600;border-left:1px solid rgba(255,255,255,.2)}
-.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;position:sticky;left:0;z-index:7;width:88px;flex-shrink:0}
+.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;position:sticky;left:0;top:0;z-index:7;width:88px;flex-shrink:0}
 
 /* 月份日期行 */
 .cal-month-bar{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f0f7ff;border-bottom:2px solid var(--border);position:sticky;top:40px;z-index:5}
@@ -232,11 +232,16 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 
 /* 周日期行 - 显示每周的7天日期 */
 .cal-week-dates{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f8faff;border-bottom:1px solid var(--border);position:sticky;left:0;z-index:4}
-.cal-week-date-cell{padding:4px 2px;text-align:center;font-size:10px;border-left:1px solid #e2e8f0}
+.cal-week-date-cell{padding:4px 2px;text-align:center;font-size:10px;border-left:1px solid #e2e8f0;position:sticky;top:auto;z-index:1}
 .cal-week-date-cell.today-week{color:var(--primary);font-weight:700}
 .cal-week-date-cell.dim-week{color:#94a3b8}
 .cal-week-date-num{display:block;font-size:11px;font-weight:600}
 .cal-week-date-wday{display:block;font-size:9px;color:#94a3b8;margin-top:1px}
+
+
+/* 周日期行的时段列也要sticky */
+.cal-week-dates{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f8faff;border-bottom:1px solid var(--border)}
+.cal-week-dates > div:first-child{position:sticky;left:0;top:auto;z-index:4;background:#f8faff}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
 </style>
@@ -680,7 +685,6 @@ function renderCalendar() {
       const dayClass = isTodayD ? 'today-week' : (!inMonth ? 'dim-week' : '');
       h += `<div class="cal-week-date-cell ${dayClass}">
         <span class="cal-week-date-num">${d.getMonth() + 1}月${d.getDate()}日</span>
-        <span class="cal-week-date-wday">${wdayLabels[dow]}</span>
       </div>`;
     }
     h += `</div>`;
