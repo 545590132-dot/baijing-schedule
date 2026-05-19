@@ -54,13 +54,13 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-today-btn:hover{background:var(--primary-dark)}
 
 /* CALENDAR */
-.calendar-wrap{padding:14px 20px 24px;max-height:calc(100vh - 130px);overflow-y:auto}
-.calendar{border-radius:var(--radius);overflow-x:auto;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow);position:relative}
+.calendar-wrap{padding:14px 20px 24px}
+.calendar{border-radius:var(--radius);overflow:auto;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow);position:relative;max-height:calc(100vh - 170px)}
 
-/* 表头 */
-.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:6}
+/* 表头 - 固定在滚动容器顶部 */
+.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:20}
 .cal-hc-slot{padding:10px 4px;text-align:center;color:#fff;font-size:12px;font-weight:600;border-left:1px solid rgba(255,255,255,.2)}
-.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;position:sticky;left:0;top:0;z-index:8;width:88px;flex-shrink:0}
+.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;position:sticky;left:0;top:0;z-index:25;width:88px}
 
 
 
@@ -221,11 +221,10 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 
 
 /* 周日期行 - 显示每周的7天日期 */
-.cal-week-dates{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f8faff;border-bottom:2px solid var(--border)}
+.cal-week-dates{display:grid;grid-template-columns:88px repeat(7,1fr);background:#f8faff;border-bottom:2px solid var(--border);position:sticky;top:42px;z-index:15}
 
 /* 时段固定列 - 垂直滚动时固定 */
-.cal-slot-label-sticky,.cal-slot-label-fixed{position:sticky;left:0;z-index:4;background:#fafbfc;border-right:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text-muted);min-height:36px}
-.cal-slot-label-sticky{width:88px;z-index:5}
+.cal-slot-label-sticky{position:sticky;left:0;z-index:5;background:#fafbfc;border-right:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text-muted);min-height:36px;width:88px}
 
 /* 周日期单元格 */
 .cal-week-date-cell{padding:6px 2px;text-align:center;border-left:1px solid #e2e8f0}
@@ -241,7 +240,7 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-row:last-child{border-bottom:none}
 
 /* 时段标签 - 固定列 */
-.cal-slot-label-fixed{position:sticky;left:0;z-index:3;background:#fafbfc;border-right:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text-muted);min-height:90px}
+.cal-slot-label-fixed{position:sticky;left:0;z-index:5;background:#fafbfc;border-right:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text-muted);min-height:90px;width:88px}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
 </style>
@@ -1460,6 +1459,20 @@ async function rmOpt(cat, encodedVal) {
 
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
 
+// 滚动时固定表头（备选方案：兼容旧浏览器）
+document.addEventListener('DOMContentLoaded', function() {
+  var calendar = document.getElementById('calendar');
+  if (calendar) {
+    calendar.addEventListener('scroll', function() {
+      var header = this.querySelector('.cal-header');
+      var weekDates = this.querySelectorAll('.cal-week-dates');
+      if (header) {
+        header.style.boxShadow = this.scrollTop > 0 ? '0 2px 8px rgba(0,0,0,0.1)' : '';
+      }
+    });
+  }
+});
+
 // ===== KEYBOARD =====
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m=>m.classList.add('hidden'));
@@ -1471,4 +1484,3 @@ document.addEventListener('keydown',e=>{
 </script>
 </body>
 </html>
-deploy/index.html
