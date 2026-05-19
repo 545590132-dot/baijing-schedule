@@ -1050,12 +1050,16 @@ function changeCirclePickerMonth(delta) {
 }
 
 function selectRadio(el, groupId, field, value) {
-  document.querySelectorAll(`#${groupId} .radio-item`).forEach(item => {
+  console.log('selectRadio called:', {groupId, field, value});
+  var items = document.querySelectorAll('#' + groupId + ' .radio-item');
+  console.log('Found items:', items.length);
+  items.forEach(function(item) {
     item.classList.remove('selected');
   });
   el.classList.add('selected');
   // 只有 'true'/'false' 字符串才转布尔值，其他保持原值（如宣发时段）
   md[field] = (value === 'true') ? true : (value === 'false') ? false : value;
+  console.log('md after:', JSON.parse(JSON.stringify(md)));
 }
 
 function step2Next() {
