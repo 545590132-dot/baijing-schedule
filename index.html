@@ -54,13 +54,13 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-today-btn:hover{background:var(--primary-dark)}
 
 /* CALENDAR */
-.calendar-wrap{padding:14px 20px 24px}
-.calendar{border-radius:var(--radius);overflow:auto;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow);position:relative;max-height:calc(100vh - 170px)}
+.calendar-wrap{padding:14px 20px 24px;position:relative;overflow-y:visible}
+.calendar{border-radius:var(--radius);overflow:auto;border:1px solid var(--border);background:#fff;min-width:880px;box-shadow:var(--shadow);position:relative;height:calc(100vh - 170px);display:flex;flex-direction:column}
 
 /* 表头 - 固定在滚动容器顶部 */
-.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:20}
+.cal-header{display:grid;grid-template-columns:88px repeat(7,1fr);background:linear-gradient(135deg,var(--primary),var(--secondary));position:sticky;top:0;z-index:20;flex-shrink:0}
 .cal-hc-slot{padding:10px 4px;text-align:center;color:#fff;font-size:12px;font-weight:600;border-left:1px solid rgba(255,255,255,.2)}
-.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;position:sticky;left:0;top:0;z-index:25;width:88px}
+.cal-hc-slot.label{background:rgba(0,0,0,.15);border-left:none;font-size:10px;width:88px;flex-shrink:0}
 
 
 
@@ -1459,19 +1459,20 @@ async function rmOpt(cat, encodedVal) {
 
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
 
-// 滚动时固定表头（备选方案：兼容旧浏览器）
-document.addEventListener('DOMContentLoaded', function() {
-  var calendar = document.getElementById('calendar');
-  if (calendar) {
-    calendar.addEventListener('scroll', function() {
-      var header = this.querySelector('.cal-header');
-      var weekDates = this.querySelectorAll('.cal-week-dates');
-      if (header) {
-        header.style.boxShadow = this.scrollTop > 0 ? '0 2px 8px rgba(0,0,0,0.1)' : '';
+// 渲染完成后绑定滚动事件，确保表头固定效果
+var _origRenderCalendar = renderCalendar;
+renderCalendar = function() {
+  _origRenderCalendar();
+  var cal = document.getElementById('calendar');
+  if (cal) {
+    cal.onscroll = function() {
+      var hdr = cal.querySelector('.cal-header');
+      if (hdr) {
+        hdr.style.boxShadow = cal.scrollTop > 0 ? '0 2px 8px rgba(0,0,0,0.15)' : '';
       }
-    });
+    };
   }
-});
+};
 
 // ===== KEYBOARD =====
 document.addEventListener('keydown',e=>{
