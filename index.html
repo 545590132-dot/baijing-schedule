@@ -74,11 +74,10 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 /* 时段行 */
 .cal-row{display:grid;grid-template-columns:88px repeat(7,1fr);border-bottom:1px solid #f1f5f9;min-height:90px;position:relative}
 .cal-row:last-child{border-bottom:none}
+.cal-row.slot-row{min-height:60px}
 
 /* 时段标签 */
-
-
-/* 格子 */
+.cal-slot-label-fixed{width:88px;background:#f8faff;border-right:1px solid var(--border);font-size:11px;font-weight:600;color:var(--text-muted);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .cal-cell{padding:4px 3px;border-left:1px solid var(--border);cursor:default;transition:background .15s;position:relative;min-height:90px;overflow:hidden;z-index:1}
 .cal-cell.admin-cell{cursor:pointer}
 .cal-cell.admin-cell:hover{background:#f0f7ff}
@@ -640,12 +639,21 @@ function renderCalendar() {
   for (let i = 0; i < 7; i++) h += `<div class="cal-hc-slot">周${WEEKDAY_LABELS[i]}</div>`;
   h += '</div>';
 
-  // ===== 主体：每天一行 =====
+  // 四个时段定义
+  const TIME_SLOTS = [
+    { key: '上午群发', label: '上午群发', color: '#10b981' },
+    { key: '上午发圈', label: '上午发圈', color: '#8b5cf6' },
+    { key: '下午群发', label: '下午群发', color: '#f59e0b' },
+    { key: '下午发圈', label: '下午发圈', color: '#ef4444' }
+  ];
+
+  // ===== 主体：每天四行时段 =====
   for (let wk = 0; wk < totalWeeks; wk++) {
     h += `<div class="cal-week-block">`;
-    // 添加周日期行
+    
+    // 1. 周日期行
     h += `<div class="cal-week-dates">`;
-    h += `<div class="cal-slot-label-sticky"></div>`; // 日期固定列
+    h += `<div class="cal-slot-label-sticky"></div>`;
     for (let di = 0; di < 7; di++) {
       const d = new Date(firstDay);
       d.setDate(firstDay.getDate() + wk * 7 + di);
@@ -665,23 +673,27 @@ function renderCalendar() {
     }
     h += `</div>`;
 
-    // 每天一行
-    h += `<div class="cal-row">`;
-    h += `<div class="cal-slot-label-fixed">排期</div>`;
-    for (let di = 0; di < 7; di++) {
-      const d = new Date(firstDay);
-      d.setDate(firstDay.getDate() + wk * 7 + di);
-      const ds = fmtDate(d);
-      const inMonth = d.getMonth() + 1 === m;
-      const tc = isToday(d) ? ' today-col' : '';
-      const ac = isSuperAdmin ? ' admin-cell' : '';
-      const dbl = isSuperAdmin ? ` ondblclick="dbClick('${ds}',event)"` : '';
-      h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}"${dbl}>`;
-      (scheduleMap[ds] || []).forEach(ev => h += renderCard(ev));
-      if (isAdmin) h += '<div class="cell-add-hint">＋</div>';
+    // 2. 四个时段行
+    TIME_SLOTS.forEach(slot => {
+      h += `<div class="cal-row slot-row" data-slot="${slot.key}">`;
+      h += `<div class="cal-slot-label-fixed" style="background:${slot.color};color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;padding:4px;">${slot.label}</div>`;
+      for (let di = 0; di < 7; di++) {
+        const d = new Date(firstDay);
+        d.setDate(firstDay.getDate() + wk * 7 + di);
+        const ds = fmtDate(d);
+        const inMonth = d.getMonth() + 1 === m;
+        const tc = isToday(d) ? ' today-col' : '';
+        const ac = isSuperAdmin ? ' admin-cell' : '';
+        // 只显示属于该时段的排期
+        const slotEvents = (scheduleMap[ds] || []).filter(ev => ev.time_slot === slot.key);
+        h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}" ondblclick="${isSuperAdmin ? `dbClick('${ds}','${slot.key}',event)` : ''}">`;
+        slotEvents.forEach(ev => h += renderCard(ev));
+        if (isAdmin && slotEvents.length === 0) h += '<div class="cell-add-hint">＋</div>';
+        h += '</div>';
+      }
       h += '</div>';
-    }
-    h += '</div>';
+    });
+    
     h += '</div>';
   }
 
@@ -792,8 +804,8 @@ function renderCard(ev) {
     '</div>';
 }
 
-function dbClick(date, e) {
-  if(!isAdmin) return; e.stopPropagation(); openAddModal(date);
+function dbClick(date, slot, e) {
+  if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot);
 }
 
 // ===== SCHEDULE MODAL =====
