@@ -102,6 +102,13 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .etag-circle{background:#fdf4ff;color:#9333ea}
 .etag-exchange{background:#f5f3ff;color:#7c3aed}
 
+/* 卡片额外信息 */
+.card-extra{font-size:9px;color:#64748b;margin-top:2px;border-top:1px dashed #f1f5f9;padding-top:2px}
+.card-row{margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.card-label{color:#94a3b8}
+.card-tooltip{cursor:help;border-bottom:1px dotted #94a3b8;position:relative}
+.card-tooltip:hover::after{content:attr(title);position:absolute;bottom:100%;left:0;background:#1e293b;color:#fff;padding:4px 8px;border-radius:4px;font-size:10px;white-space:pre-wrap;max-width:200px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+
 /* 加号提示 */
 .cell-add-hint{position:absolute;bottom:3px;right:4px;font-size:16px;color:#cbd5e1;opacity:0;transition:opacity .2s;pointer-events:none;line-height:1}
 .cal-cell.admin-cell:hover .cell-add-hint{opacity:1}
@@ -150,6 +157,8 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .btn-modal-cancel:hover{border-color:var(--primary);color:var(--primary)}
 .btn-modal-submit,.btn-modal-next{padding:7px 22px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
 .btn-modal-submit:hover,.btn-modal-next:hover{background:var(--primary-dark)}
+.btn-modal-prev{padding:7px 22px;background:#fff;color:var(--primary);border:1.5px solid var(--primary);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
+.btn-modal-prev:hover{background:#eff6ff}
 .btn-modal-danger{padding:7px 18px;background:#fef2f2;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
 .file-upload-area{border:2px dashed var(--border);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all .2s}
 .file-upload-area:hover{border-color:var(--primary);background:#f0f7ff}
@@ -340,6 +349,7 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
     <div class="modal-body" id="sch-modal-body"></div>
     <div class="modal-footer" id="sch-modal-footer">
       <button class="btn-modal-cancel" onclick="closeModal('sch-modal')">取消</button>
+      <button class="btn-modal-prev hidden" id="sch-prev-btn" onclick="goPrevStep()">← 上一步</button>
       <button class="btn-modal-next" id="sch-next-btn">下一步 →</button>
     </div>
   </div>
@@ -395,6 +405,52 @@ let scheduleMap = {};
 let opts = { departments:[], circleServiceAccounts:[], communityGroups:[] };
 let editingId = null;
 let md = {}; // modal data
+let currentStep = 1; // 当前步骤 1-3
+
+// 上一步函数
+function goPrevStep() {
+  const prevBtn = document.getElementById('sch-prev-btn');
+  const nextBtn = document.getElementById('sch-next-btn');
+  
+  if (currentStep === 2) {
+    currentStep = 1;
+    renderStep1();
+  } else if (currentStep === 3) {
+    currentStep = 2;
+    renderStep2();
+  }
+  
+  updateStepIndicators();
+  updateNavButtons();
+}
+
+// 更新步骤指示器
+function updateStepIndicators() {
+  const dots = document.querySelectorAll('.step-dot');
+  const lines = document.querySelectorAll('.step-line');
+  dots.forEach((dot, i) => {
+    dot.className = 'step-dot' + (i + 1 <= currentStep ? ' active' : '');
+  });
+  lines.forEach((line, i) => {
+    line.className = 'step-line' + (i + 1 < currentStep ? ' done' : '');
+  });
+}
+
+// 更新导航按钮
+function updateNavButtons() {
+  const prevBtn = document.getElementById('sch-prev-btn');
+  const nextBtn = document.getElementById('sch-next-btn');
+  
+  // 上一步按钮：步骤2和3显示
+  prevBtn.classList.toggle('hidden', currentStep === 1);
+  
+  // 下一步按钮文字
+  if (currentStep === 3) {
+    nextBtn.textContent = editingId ? '保存修改 ✓' : '提交保存 ✓';
+  } else {
+    nextBtn.textContent = '下一步 →';
+  }
+}
 let pendingFiles = [];
 let searchQuery = '';
 let pickerMonth = new Date(); // 日期选择器当前月份
@@ -701,7 +757,7 @@ function renderCalendar() {
         });
         
         h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}" ondblclick="${isSuperAdmin ? `dbClick('${ds}','${slot.key}',event)` : ''}">`;
-        slotEvents.forEach(ev => h += renderCard(ev));
+        slotEvents.forEach(ev => h += renderCard(ev, slot.key));
         if (isAdmin && slotEvents.length === 0) h += '<div class="cell-add-hint">＋</div>';
         h += '</div>';
       }
@@ -796,25 +852,61 @@ function togglePickerDate(ds, el) {
   }
 }
 
-function renderCard(ev) {
+function renderCard(ev, slotKey) {
   var sa=j(ev.circle_service_accounts||'[]');
   var cg=j(ev.community_group_details||'[]');
   var cf=j(ev.community_publish_forms||'[]');
-  var tags='';
-  if(ev.activity_type==='置换') tags+='<span class="etag etag-exchange">置换</span>';
-  else {
-    if(sa.length>0) tags+='<span class="etag etag-circle">朋友圈</span>';
-    if(cf.indexOf('@所有人')>=0) tags+='<span class="etag etag-mention">@全体</span>';
-    if(cf.indexOf('群置顶')>=0) tags+='<span class="etag etag-top">置顶</span>';
-    if(ev.has_hongbao_circle||ev.has_hongbao_community) tags+='<span class="etag etag-hb">红包</span>';
-  }
   var tc = ev.activity_type==='赞助'?'type-sponsor':ev.activity_type==='商务'?'type-business':ev.activity_type==='置换'?'type-exchange':'';
   var nameHtml = highlightText(ev.activity_name || '', searchQuery);
   var ownerHtml = highlightText(ev.owner || '', searchQuery);
+  
+  // 判断是群发时段还是发圈时段
+  var isCommunitySlot = slotKey && (slotKey.includes('群发'));
+  var isCircleSlot = slotKey && (slotKey.includes('发圈'));
+  
+  var extraHtml = '';
+  
+  if (isCommunitySlot) {
+    // 群发时段卡片：宣传形式、是否发红包、群明细（hover显示全部）
+    var forms = cf.length > 0 ? cf.join('、') : '-';
+    var hasHongbao = ev.has_hongbao_community ? '是' : '否';
+    var firstGroup = cg.length > 0 ? (cg[0].name || cg[0].group_name || JSON.stringify(cg[0])) : '-';
+    
+    // 构建群明细tooltip
+    var groupsTooltip = '';
+    if (cg.length > 0) {
+      var allGroups = cg.map(g => g.name || g.group_name || JSON.stringify(g)).join('<br>');
+      groupsTooltip = '<span class="card-tooltip" title="' + allGroups.replace(/"/g, '&quot;') + '">' + (cg.length > 1 ? firstGroup + '...' : firstGroup) + '</span>';
+    } else {
+      groupsTooltip = '-';
+    }
+    
+    extraHtml = '<div class="card-extra">' +
+      '<div class="card-row"><span class="card-label">形式：</span>' + forms + '</div>' +
+      '<div class="card-row"><span class="card-label">红包：</span>' + hasHongbao + '</div>' +
+      '<div class="card-row"><span class="card-label">群：</span>' + groupsTooltip + '</div>' +
+      '</div>';
+  } else if (isCircleSlot) {
+    // 发圈时段卡片：客服号
+    var accountsDisplay = '-';
+    if (sa.length > 0) {
+      // 检查是否是全选（假设全选时 sa 是 ["全选"] 或包含特定标记）
+      if (sa.length === 1 && (sa[0] === '全选' || sa[0] === '所有客服号')) {
+        accountsDisplay = '所有客服号';
+      } else if (sa.length > 0) {
+        accountsDisplay = sa.join('、');
+      }
+    }
+    
+    extraHtml = '<div class="card-extra">' +
+      '<div class="card-row"><span class="card-label">客服：</span>' + accountsDisplay + '</div>' +
+      '</div>';
+  }
+  
   return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)">' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
-    '<div class="event-tags">' + tags + '</div>' +
+    extraHtml +
     '</div>';
 }
 
@@ -827,11 +919,13 @@ function openAddModal(preDate='', preSlot='') {
   if(!isAdmin) return toast('管理员可操作','error');
   editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot, time_slot:preSlot};
   pickerMonth = new Date(); // 重置日期选择器月份
+  currentStep = 1; // 重置步骤
   document.getElementById('sch-modal-title').textContent='新增排期';
   // 先打开 modal，再渲染内容（避免 JS 错误时 modal 卡死）
   document.getElementById('sch-modal').classList.remove('hidden');
   try {
     renderStep1();
+    updateNavButtons();
   } catch(e) {
     console.error('renderStep1 error:', e);
     document.getElementById('sch-modal-body').innerHTML='<div style="text-align:center;padding:40px;color:#ef4444">渲染失败，请刷新重试<br><small>'+e.message+'</small></div>';
@@ -862,10 +956,11 @@ async function openEditModal(id) {
     } else {
       pickerMonth = new Date();
     }
+    currentStep = 1; // 重置步骤
     document.getElementById('sch-modal-title').textContent='编辑排期';
     document.getElementById('sch-modal').classList.remove('hidden');
     showLoading(false);
-    try { renderStep1(); } catch(e2){ toast('表单渲染失败','error'); console.error(e2); }
+    try { renderStep1(); updateNavButtons(); } catch(e2){ toast('表单渲染失败','error'); console.error(e2); }
   }catch(e){showLoading(false);toast('加载失败','error');}
 }
 
@@ -953,9 +1048,11 @@ function step1Next() {
   const owner=document.getElementById('f_owner').value.trim();
   if(!name||!dept||!type||!owner) return toast('请填写所有必填项','error');
   md.activity_name=name; md.department=dept; md.activity_type=type; md.owner=owner;
+  currentStep = 2;
   document.getElementById('sd2').className='step-dot active';
   document.getElementById('sl1').className='step-line done';
   document.getElementById('sd3').className='step-dot';
+  updateNavButtons();
   document.getElementById('sl2').className='step-line';
   renderStep2();
 }
@@ -1045,13 +1142,6 @@ function renderStep2() {
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 可同时选择上午和下午</div>
     </div>
-    <div class="form-group">
-      <label class="required">是否发红包</label>
-      <div class="radio-group" id="rg_circle_hongbao">
-        <label class="radio-item ${md.circle_hongbao===true||md.circle_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'rg_circle_hongbao','circle_hongbao','true')">是</label>
-        <label class="radio-item ${md.circle_hongbao===false||md.circle_hongbao==='false'||md.circle_hongbao===undefined?'':'selected'}" onclick="selectRadio(this,'rg_circle_hongbao','circle_hongbao','false')">否</label>
-      </div>
-    </div>
   `;
   document.getElementById('sch-next-btn').textContent='下一步 →';
   document.getElementById('sch-next-btn').onclick=step2Next;
@@ -1116,12 +1206,11 @@ function step2Next() {
   // 验证宣发时段（可多选）
   if (!md.circle_time_slots || md.circle_time_slots.length === 0) return toast('请至少选择一个宣发时段', 'error');
   
-  // 验证是否发红包
-  if (md.circle_hongbao === undefined) return toast('请选择是否发红包', 'error');
-  
   // 更新步骤指示器
+  currentStep = 3;
   document.getElementById('sd3').className='step-dot active';
   document.getElementById('sl2').className='step-line done';
+  updateNavButtons();
   renderStep3();
 }
 
@@ -1328,7 +1417,6 @@ async function submitSchedule() {
         circle_service_accounts: JSON.stringify(md.service_accounts || []),
         circle_publish_dates: JSON.stringify(md.circle_dates || []),
         circle_time_slots: JSON.stringify(md.circle_time_slots || []),
-        has_hongbao_circle: md.circle_hongbao,
         // 社群数据
         community_group_details: JSON.stringify(md.community_groups || []),
         community_publish_dates: JSON.stringify(md.community_dates || []),
