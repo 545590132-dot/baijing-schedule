@@ -684,8 +684,19 @@ function renderCalendar() {
         const inMonth = d.getMonth() + 1 === m;
         const tc = isToday(d) ? ' today-col' : '';
         const ac = isSuperAdmin ? ' admin-cell' : '';
-        // 只显示属于该时段的排期
-        const slotEvents = (scheduleMap[ds] || []).filter(ev => ev.time_slot === slot.key);
+        
+        // 获取该日期的所有排期
+        const dayEvents = scheduleMap[ds] || [];
+        
+        // 找出属于该时段的排期（包括 time_slot 和 time_slots 数组中的）
+        const slotEvents = dayEvents.filter(ev => {
+          // 兼容旧数据：time_slot 字段
+          if (ev.time_slot === slot.key) return true;
+          // 新数据：time_slots 数组字段
+          const slots = j(ev.time_slots || '[]');
+          return slots.includes(slot.key);
+        });
+        
         h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}" ondblclick="${isSuperAdmin ? `dbClick('${ds}','${slot.key}',event)` : ''}">`;
         slotEvents.forEach(ev => h += renderCard(ev));
         if (isAdmin && slotEvents.length === 0) h += '<div class="cell-add-hint">＋</div>';
@@ -1024,11 +1035,12 @@ function renderStep2() {
       <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
     </div>
     <div class="form-group">
-      <label class="required">宣发时段</label>
-      <div class="radio-group" id="rg_circle_time">
-        <label class="radio-item ${md.circle_time_slot==='上午发圈'?'selected':''}" onclick="selectRadio(this,'rg_circle_time','circle_time_slot','上午发圈')">上午发圈</label>
-        <label class="radio-item ${md.circle_time_slot==='下午发圈'?'selected':''}" onclick="selectRadio(this,'rg_circle_time','circle_time_slot','下午发圈')">下午发圈</label>
+      <label class="required">宣发时段（可多选）</label>
+      <div class="checkbox-group" id="rg_circle_time">
+        <label class="checkbox-item ${(md.circle_time_slots||[]).includes('上午发圈')?'checked':''}" onclick="toggleTimeSlot(this,'circle_time_slots','上午发圈')">上午发圈</label>
+        <label class="checkbox-item ${(md.circle_time_slots||[]).includes('下午发圈')?'checked':''}" onclick="toggleTimeSlot(this,'circle_time_slots','下午发圈')">下午发圈</label>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 可同时选择上午和下午</div>
     </div>
     <div class="form-group">
       <label class="required">是否发红包</label>
@@ -1052,6 +1064,18 @@ function toggleCircleDate(ds, el) {
     md.circle_dates.push(ds);
     el.classList.add('selected');
   }
+}
+
+// 时段多选切换
+function toggleTimeSlot(el, field, value) {
+  if (!Array.isArray(md[field])) md[field] = [];
+  el.classList.toggle('checked');
+  if (el.classList.contains('checked')) {
+    if (!md[field].includes(value)) md[field].push(value);
+  } else {
+    md[field] = md[field].filter(v => v !== value);
+  }
+  console.log(field + ':', md[field]);
 }
 
 function changeCirclePickerMonth(delta) {
@@ -1086,8 +1110,8 @@ function step2Next() {
   // 验证宣发日期
   if (!md.circle_dates || md.circle_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
   
-  // 验证宣发时段
-  if (!md.circle_time_slot) return toast('请选择宣发时段', 'error');
+  // 验证宣发时段（可多选）
+  if (!md.circle_time_slots || md.circle_time_slots.length === 0) return toast('请至少选择一个宣发时段', 'error');
   
   // 验证是否发红包
   if (md.circle_hongbao === undefined) return toast('请选择是否发红包', 'error');
@@ -1102,7 +1126,7 @@ function renderStep3() {
   if(!Array.isArray(md.community_groups)) md.community_groups=j(md.community_group_details||'[]');
   if(!Array.isArray(md.community_dates)) md.community_dates=[];
   if(!Array.isArray(md.community_forms)) md.community_forms=j(md.community_publish_forms||'[]');
-  if(!md.community_time_slot) md.community_time_slot='';
+  if(!Array.isArray(md.community_time_slots)) md.community_time_slots=[];
   if(md.community_hongbao === undefined) md.community_hongbao = null;
 
   // 群明细（社群）- 默认全选
@@ -1184,11 +1208,12 @@ function renderStep3() {
       <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
     </div>
     <div class="form-group">
-      <label class="required">宣发时段</label>
-      <div class="radio-group" id="rg_community_time">
-        <label class="radio-item ${md.community_time_slot==='上午群发'?'selected':''}" onclick="selectRadio(this,'rg_community_time','community_time_slot','上午群发')">上午群发</label>
-        <label class="radio-item ${md.community_time_slot==='下午群发'?'selected':''}" onclick="selectRadio(this,'rg_community_time','community_time_slot','下午群发')">下午群发</label>
+      <label class="required">宣发时段（可多选）</label>
+      <div class="checkbox-group" id="rg_community_time">
+        <label class="checkbox-item ${(md.community_time_slots||[]).includes('上午群发')?'checked':''}" onclick="toggleTimeSlot(this,'community_time_slots','上午群发')">上午群发</label>
+        <label class="checkbox-item ${(md.community_time_slots||[]).includes('下午群发')?'checked':''}" onclick="toggleTimeSlot(this,'community_time_slots','下午群发')">下午群发</label>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 可同时选择上午和下午</div>
     </div>
     <div class="form-group">
       <label class="required">宣传形式（可多选）</label>
@@ -1254,8 +1279,8 @@ async function submitSchedule() {
   // 验证宣发日期
   if (!md.community_dates || md.community_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
   
-  // 验证宣发时段
-  if (!md.community_time_slot) return toast('请选择社群宣发时段', 'error');
+  // 验证宣发时段（可多选）
+  if (!md.community_time_slots || md.community_time_slots.length === 0) return toast('请至少选择一个社群宣发时段', 'error');
   
   // 验证宣传形式
   const communityForms = md.community_forms || [];
@@ -1280,35 +1305,31 @@ async function submitSchedule() {
   showLoading(true);
   
   try {
+    // 合并所有时段（朋友圈 + 社群）
+    const allTimeSlots = [
+      ...(md.circle_time_slots || []),
+      ...(md.community_time_slots || [])
+    ];
+    // 去重
+    const uniqueTimeSlots = [...new Set(allTimeSlots)];
+    
     for (const d of allDates) {
-      // 判断这一天属于朋友圈还是社群
-      const isCircleDate = (md.circle_dates || []).includes(d);
-      const isCommunityDate = (md.community_dates || []).includes(d);
-      
-      // 根据日期来源决定时段
-      let slot = '';
-      if (isCircleDate && md.circle_time_slot) {
-        slot = md.circle_time_slot;
-      } else if (isCommunityDate && md.community_time_slot) {
-        slot = md.community_time_slot;
-      }
-      
       const payload = {
         activity_name: md.activity_name,
         department: md.department,
         activity_type: md.activity_type,
         owner: md.owner,
         date: d,
-        time_slot: slot || '下午发圈', // 默认值
+        time_slots: JSON.stringify(uniqueTimeSlots), // 时段数组
         // 朋友圈数据
         circle_service_accounts: JSON.stringify(md.service_accounts || []),
         circle_publish_dates: JSON.stringify(md.circle_dates || []),
-        circle_time_slot: md.circle_time_slot || '',
+        circle_time_slots: JSON.stringify(md.circle_time_slots || []),
         has_hongbao_circle: md.circle_hongbao,
         // 社群数据
         community_group_details: JSON.stringify(md.community_groups || []),
         community_publish_dates: JSON.stringify(md.community_dates || []),
-        community_time_slot: md.community_time_slot || '',
+        community_time_slots: JSON.stringify(md.community_time_slots || []),
         community_publish_forms: JSON.stringify(md.community_forms || []),
         has_hongbao_community: md.community_hongbao,
         // 合同及截图
