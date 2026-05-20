@@ -47,6 +47,11 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 
 /* CAL NAV */
 .cal-nav{display:flex;align-items:center;justify-content:center;gap:14px;padding:14px 20px 0}
+
+/* 部门色块说明 */
+.dept-legend{display:flex;align-items:center;justify-content:center;gap:20px;padding:8px 20px;background:#f8faff;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.dept-legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)}
+.dept-legend-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
 .cal-nav-btn{background:#fff;border:1.5px solid var(--border);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .cal-nav-btn:hover{border-color:var(--primary);color:var(--primary)}
 .cal-nav-title{font-size:16px;font-weight:700;min-width:200px;text-align:center}
@@ -321,7 +326,12 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
     </div>
   </div>
 
-  <div class="cal-nav">
+  <div class="dept-legend">
+  <div class="dept-legend-item"><span class="dept-legend-dot" style="background:#f59e0b"></span>赞助</div>
+  <div class="dept-legend-item"><span class="dept-legend-dot" style="background:#10b981"></span>商务</div>
+  <div class="dept-legend-item"><span class="dept-legend-dot" style="background:#8b5cf6"></span>置换</div>
+</div>
+<div class="cal-nav">
     <button class="cal-nav-btn" onclick="changeMonth(-1)">‹</button>
     <div class="cal-nav-title" id="cal-nav-title"></div>
     <button class="cal-nav-btn" onclick="changeMonth(1)">›</button>
@@ -591,6 +601,35 @@ async function enterApp() {
   document.getElementById('btn-admin').className='btn-sm btn-manage'+(isSuperAdmin?'':' hidden');
   await loadOpts();
   await refreshCalendar();
+  goToToday(); // 滚动到今日所在周
+}
+
+// 滚动到今日所在位置
+function goToToday() {
+  const today = new Date();
+  const calNav = document.querySelector('.cal-nav');
+  if (!calNav) return;
+  
+  // 计算今日在日历中的位置
+  const calendarWrap = document.querySelector('.calendar-wrap');
+  if (!calendarWrap) return;
+  
+  // 查找今日所在的周块
+  const weekBlocks = document.querySelectorAll('.cal-week-block');
+  const todayStr = today.toISOString().split('T')[0];
+  
+  weekBlocks.forEach(block => {
+    const dates = block.querySelectorAll('.cal-week-date-cell');
+    dates.forEach(cell => {
+      if (cell.dataset.date === todayStr) {
+        // 找到了今日所在的单元格，滚动到对应位置
+        const cellPos = cell.getBoundingClientRect();
+        const wrapPos = calendarWrap.getBoundingClientRect();
+        const scrollTop = cell.offsetTop - calNav.offsetHeight - 80; // 80px 偏移量
+        calendarWrap.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
+      }
+    });
+  });
 }
 
 // ===== OPTIONS =====
@@ -722,7 +761,7 @@ function renderCalendar() {
       const isWeekendDay = isWeekend && !hm;
       const cellClass = isTodayD ? 'today-week' : (!inMonth ? 'dim-week' : '') + (hm ? ' holiday-week' : isWeekendDay ? ' weekend-week' : '');
       const title = hm ? hm : isWeekendDay ? '周末' : '';
-      h += `<div class="cal-week-date-cell ${cellClass}"${title ? ' title="' + title + '"' : ''}>
+      h += `<div class="cal-week-date-cell ${cellClass}" data-date="${ds}"${title ? ' title="' + title + '"' : ''}>
         <span class="cal-week-date-num">${d.getDate()}</span>
         ${hm ? '<span class="cal-holiday-tag">' + hm + '</span>' : ''}
       </div>`;
@@ -903,7 +942,7 @@ function renderCard(ev, slotKey) {
       '</div>';
   }
   
-  return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)">' +
+  return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)" ondblclick="event.stopPropagation();openEditModal(' + ev.id + ')">' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
     extraHtml +
@@ -1142,9 +1181,60 @@ function renderStep2() {
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 可同时选择上午和下午</div>
     </div>
+    <div class="form-group">
+      <label>宣传文案</label>
+      <textarea id="f_circle_caption" class="form-input" style="min-height:80px;resize:vertical" placeholder="输入宣传文案，支持表情包">${md.circle_caption || ''}</textarea>
+    </div>
+    <div class="form-group">
+      <label>宣传海报</label>
+      <div class="file-upload-area" onclick="document.getElementById('f_circle_poster').click()">
+        <input type="file" id="f_circle_poster" accept="image/*" style="display:none" onchange="handlePosterUpload(this, 'circle')">
+        <div id="circle_poster_preview">
+          ${md.circle_poster ? '<img src="' + md.circle_poster + '" style="max-width:200px;max-height:150px;border-radius:8px">' : '<div style="color:var(--text-muted)">📷 点击上传图片（不超过5M）</div>'}
+        </div>
+      </div>
+      ${md.circle_poster ? '<button type="button" class="btn-sm" style="background:#fef2f2;color:#ef4444;border:1px solid #fecaca;padding:4px 10px;border-radius:6px;margin-top:6px;cursor:pointer" onclick="removePoster(\'circle\')">删除</button>' : ''}
+    </div>
   `;
   document.getElementById('sch-next-btn').textContent='下一步 →';
   document.getElementById('sch-next-btn').onclick=step2Next;
+}
+
+function handlePosterUpload(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    toast('图片大小不得超过5M', 'error');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    md[type + '_poster'] = e.target.result;
+    document.getElementById(type + '_poster_preview').innerHTML = '<img src="' + e.target.result + '" style="max-width:200px;max-height:150px;border-radius:8px">';
+    // 添加删除按钮
+    const wrap = document.getElementById(type + '_poster_preview').parentElement;
+    let delBtn = wrap.nextElementSibling;
+    if (delBtn && delBtn.textContent.includes('删除')) delBtn.remove();
+    const newDelBtn = document.createElement('button');
+    newDelBtn.type = 'button';
+    newDelBtn.className = 'btn-sm';
+    newDelBtn.style = 'background:#fef2f2;color:#ef4444;border:1px solid #fecaca;padding:4px 10px;border-radius:6px;margin-top:6px;cursor:pointer';
+    newDelBtn.textContent = '删除';
+    newDelBtn.onclick = function() { removePoster(type); };
+    wrap.parentNode.insertBefore(newDelBtn, wrap.nextSibling);
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePoster(type) {
+  md[type + '_poster'] = null;
+  document.getElementById(type + '_poster_preview').innerHTML = '<div style="color:var(--text-muted)">📷 点击上传图片（不超过5M）</div>';
+  const delBtn = document.getElementById('f_' + type + '_poster');
+  if (delBtn) delBtn.value = '';
+  const wrap = document.getElementById(type + '_poster_preview').parentElement;
+  let delBtn2 = wrap.nextElementSibling;
+  if (delBtn2 && delBtn2.textContent.includes('删除')) delBtn2.remove();
 }
 
 function toggleCircleDate(ds, el) {
@@ -1196,6 +1286,9 @@ function selectRadio(el, groupId, field, value) {
 }
 
 function step2Next() {
+  // 保存宣传文案和海报
+  md.circle_caption = document.getElementById('f_circle_caption').value;
+  
   // 验证客服号
   const serviceAccounts = md.service_accounts || [];
   if (serviceAccounts.length === 0) return toast('请至少选择一个客服号', 'error');
@@ -1312,6 +1405,20 @@ function renderStep3() {
       <div class="checkbox-group" id="f_community_forms">${formHtml}</div>
     </div>
     <div class="form-group">
+      <label>宣传文案</label>
+      <textarea id="f_community_caption" class="form-input" style="min-height:80px;resize:vertical" placeholder="输入宣传文案，支持表情包">${md.community_caption || ''}</textarea>
+    </div>
+    <div class="form-group">
+      <label>宣传海报</label>
+      <div class="file-upload-area" onclick="document.getElementById('f_community_poster').click()">
+        <input type="file" id="f_community_poster" accept="image/*" style="display:none" onchange="handlePosterUpload(this, 'community')">
+        <div id="community_poster_preview">
+          ${md.community_poster ? '<img src="' + md.community_poster + '" style="max-width:200px;max-height:150px;border-radius:8px">' : '<div style="color:var(--text-muted)">📷 点击上传图片（不超过5M）</div>'}
+        </div>
+      </div>
+      ${md.community_poster ? '<button type="button" class="btn-sm" style="background:#fef2f2;color:#ef4444;border:1px solid #fecaca;padding:4px 10px;border-radius:6px;margin-top:6px;cursor:pointer" onclick="removePoster(\'community\')">删除</button>' : ''}
+    </div>
+    <div class="form-group">
       <label class="required">是否发红包</label>
       <div class="radio-group" id="rg_community_hongbao">
         <label class="radio-item ${md.community_hongbao===true||md.community_hongbao==='true'?'selected':''}" onclick="selectRadio(this,'rg_community_hongbao','community_hongbao','true')">是</label>
@@ -1364,6 +1471,9 @@ function removeExistingFile(fileName) {
 }
 
 async function submitSchedule() {
+  // 保存社群宣传文案
+  md.community_caption = document.getElementById('f_community_caption').value;
+  
   // 验证群明细
   const communityGroups = md.community_groups || [];
   if (communityGroups.length === 0) return toast('请至少选择一个群明细', 'error');
@@ -1417,11 +1527,15 @@ async function submitSchedule() {
         circle_service_accounts: JSON.stringify(md.service_accounts || []),
         circle_publish_dates: JSON.stringify(md.circle_dates || []),
         circle_time_slots: JSON.stringify(md.circle_time_slots || []),
+        circle_caption: md.circle_caption || '',
+        circle_poster: md.circle_poster || '',
         // 社群数据
         community_group_details: JSON.stringify(md.community_groups || []),
         community_publish_dates: JSON.stringify(md.community_dates || []),
         community_time_slots: JSON.stringify(md.community_time_slots || []),
         community_publish_forms: JSON.stringify(md.community_forms || []),
+        community_caption: md.community_caption || '',
+        community_poster: md.community_poster || '',
         has_hongbao_community: md.community_hongbao,
         // 合同及截图
         contract_files: JSON.stringify(allFiles),
@@ -1508,6 +1622,8 @@ async function openDetail(id, e) {
           <div class="detail-row"><span class="detail-label">客服号</span><span class="detail-value">${sa.join('、')}</span></div>
           <div class="detail-row"><span class="detail-label">宣发日期</span><span class="detail-value">${cd.join('、')||'-'}</span></div>
           <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle?'✅ 是':'❌ 否'}</span></div>
+          ${ev.circle_caption ? `<div class="detail-row"><span class="detail-label">宣传文案</span><span class="detail-value" style="white-space:pre-wrap">${ev.circle_caption}</span></div>` : ''}
+          ${ev.circle_poster ? `<div class="detail-row"><span class="detail-label">宣传海报</span><span class="detail-value"><img src="${ev.circle_poster}" style="max-width:200px;border-radius:8px;margin-top:8px"></span></div>` : ''}
         </div>`;
       }
       if(cg.length>0) {
@@ -1516,6 +1632,8 @@ async function openDetail(id, e) {
           <div class="detail-row"><span class="detail-label">宣发日期</span><span class="detail-value">${cfd.join('、')||'-'}</span></div>
           <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${cf.join('、')||'-'}</span></div>
           <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_community?'✅ 是':'❌ 否'}</span></div>
+          ${ev.community_caption ? `<div class="detail-row"><span class="detail-label">宣传文案</span><span class="detail-value" style="white-space:pre-wrap">${ev.community_caption}</span></div>` : ''}
+          ${ev.community_poster ? `<div class="detail-row"><span class="detail-label">宣传海报</span><span class="detail-value"><img src="${ev.community_poster}" style="max-width:200px;border-radius:8px;margin-top:8px"></span></div>` : ''}
         </div>`;
       }
     }
