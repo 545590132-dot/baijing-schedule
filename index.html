@@ -614,22 +614,18 @@ function goToToday() {
   const calendarWrap = document.querySelector('.calendar-wrap');
   if (!calendarWrap) return;
   
-  // 查找今日所在的周块
-  const weekBlocks = document.querySelectorAll('.cal-week-block');
+  // 查找今日所在的单元格
   const todayStr = today.toISOString().split('T')[0];
+  const allCells = document.querySelectorAll('.cal-week-date-cell');
   
-  weekBlocks.forEach(block => {
-    const dates = block.querySelectorAll('.cal-week-date-cell');
-    dates.forEach(cell => {
-      if (cell.dataset.date === todayStr) {
-        // 找到了今日所在的单元格，滚动到对应位置
-        const cellPos = cell.getBoundingClientRect();
-        const wrapPos = calendarWrap.getBoundingClientRect();
-        const scrollTop = cell.offsetTop - calNav.offsetHeight - 80; // 80px 偏移量
-        calendarWrap.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
-      }
-    });
-  });
+  for (const cell of allCells) {
+    if (cell.dataset.date === todayStr) {
+      // 找到了今日单元格，滚动到该位置
+      const scrollTop = cell.offsetTop - calNav.offsetHeight - 80;
+      calendarWrap.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
+      break; // 找到后立即停止
+    }
+  }
 }
 
 // ===== OPTIONS =====
@@ -942,7 +938,8 @@ function renderCard(ev, slotKey) {
       '</div>';
   }
   
-  return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)" ondblclick="event.stopPropagation();openEditModal(' + ev.id + ')">' +
+  // 左键点击查看详情，右键点击编辑
+  return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
     extraHtml +
