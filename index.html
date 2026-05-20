@@ -688,13 +688,16 @@ function renderCalendar() {
         // 获取该日期的所有排期
         const dayEvents = scheduleMap[ds] || [];
         
-        // 找出属于该时段的排期（包括 time_slot 和 time_slots 数组中的）
+        // 找出属于该时段的排期（检查 circle_time_slots 和 community_time_slots）
         const slotEvents = dayEvents.filter(ev => {
           // 兼容旧数据：time_slot 字段
           if (ev.time_slot === slot.key) return true;
-          // 新数据：time_slots 数组字段
-          const slots = j(ev.time_slots || '[]');
-          return slots.includes(slot.key);
+          // 检查宣发时段
+          const circleSlots = j(ev.circle_time_slots || '[]');
+          if (circleSlots.includes(slot.key)) return true;
+          // 检查社群时段
+          const communitySlots = j(ev.community_time_slots || '[]');
+          return communitySlots.includes(slot.key);
         });
         
         h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}" ondblclick="${isSuperAdmin ? `dbClick('${ds}','${slot.key}',event)` : ''}">`;
