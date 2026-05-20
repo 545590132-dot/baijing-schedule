@@ -411,7 +411,7 @@ function getMonthStart(d) {
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function isToday(d){ const t=new Date(); return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate(); }
-function j(v){ try{return JSON.parse(v||'[]');}catch(e){return [];} }
+function j(v){ if(Array.isArray(v))return v; if(typeof v==='object'&&v!==null)return v; try{return JSON.parse(v||'[]');}catch(e){return [];} }
 
 function toast(msg,type='') {
   const el=document.getElementById('toast');
