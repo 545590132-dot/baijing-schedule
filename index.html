@@ -1566,11 +1566,11 @@ function renderStep3() {
     : '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
   const groupHtml=allGroupCategories.map(cat=>{
     const childHtml=(cat.children||[]).map(c=>
-      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" onclick="tck(this,'community_groups','${c.name}')" style="margin-left:12px">${c.name}</label>`
+      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${c.name}</label>`
     ).join('');
     return `<div style="margin-bottom:6px">
       <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px;padding-left:2px">${cat.name}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${childHtml||'<span style="color:#94a3b8;font-size:11px">暂无子群</span>'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" onmouseup="swipeEnd()">${childHtml||'<span style="color:#94a3b8;font-size:11px">暂无子群</span>'}</div>
     </div>`;
   }).join('');
   
@@ -1842,7 +1842,7 @@ async function submitSchedule() {
         await api('DELETE','bj_schedules',`?id=eq.${id}`);
       }
       
-      toast(`已更新批次，共 ${allDates.length} 条`, 'success');
+      toast(`已更新批次，共 ${total} 条`, 'success');
     } else {
       // ===== 新增模式 =====
       const batchId = md.batch_id || crypto.randomUUID();
@@ -1879,6 +1879,39 @@ async function submitSchedule() {
     toast('表单提交出错：' + (e2.message||''), 'error');
     console.error('submitSchedule fatal:', e2);
   }
+}
+
+// 鼠标划选群明细子群
+var _swiping = false;
+var _swipeMode = true; // true=选中, false=取消
+
+function swipeStart(e, el, field, value) {
+  if (e.button !== 0) return; // 只响应左键
+  _swiping = true;
+  // 根据当前项的选中状态决定划选模式：已选→取消，未选→选中
+  _swipeMode = !el.classList.contains('checked');
+  swipeMove(e, el, field, value);
+}
+
+function swipeMove(e, el, field, value) {
+  if (!_swiping) return;
+  e.preventDefault();
+  var shouldCheck = _swipeMode;
+  var isChecked = el.classList.contains('checked');
+  if (shouldCheck === isChecked) return; // 已经是目标状态，跳过
+  if (!Array.isArray(md[field])) md[field] = [];
+  if (shouldCheck) {
+    el.classList.add('checked');
+    if (!md[field].includes(value)) md[field].push(value);
+  } else {
+    el.classList.remove('checked');
+    md[field] = md[field].filter(function(v) { return v !== value; });
+  }
+  if (field === 'community_groups') refreshSelectedGroups();
+}
+
+function swipeEnd() {
+  _swiping = false;
 }
 
 function tck(el, field, value) {
@@ -2062,11 +2095,20 @@ async function openDetail(id, e) {
 }
 
 async function delSchedule(id) {
-  if(!confirm('确定删除该排期？')) return;
   showLoading();
   try {
-    await api('DELETE','bj_schedules',`?id=eq.${id}`);
-    toast('已删除','success'); closeModal('detail-modal'); await refreshCalendar();
+    // 先查询该排期的 batch_id
+    const rec = await api('GET','bj_schedules',`?id=eq.${id}&select=id,batch_id`);
+    if(!rec||!rec[0]){showLoading(false);toast('数据不存在','error');return;}
+    var batchId = rec[0].batch_id;
+    var msg = batchId ? '该排期属于一个批次，确定删除该批次所有关联排期？此操作不可恢复！' : '确定删除该排期？此操作不可恢复！';
+    if(!confirm(msg)){showLoading(false);return;}
+    if(batchId) {
+      await api('DELETE','bj_schedules',`?batch_id=eq.${batchId}`);
+    } else {
+      await api('DELETE','bj_schedules',`?id=eq.${id}`);
+    }
+    toast('已删除','success'); closeModal('detail-modal'); showLoading(false); await refreshCalendar();
   }catch(e){showLoading(false);toast('删除失败','error');}
 }
 
@@ -2344,11 +2386,13 @@ function renderOptsPanel() {
         <div id="olist-communityGroups">
           ${groups.length===0?'<span style="color:#94a3b8;font-size:12px">暂无分类，请先添加一级分类</span>':''}
           ${groups.map((g,gi)=>{
-            const childrenHtml=(g.children||[]).map(c=>
-              `<div class="option-chip" style="margin-left:24px;border-color:#93c5fd;background:#f0f7ff">${c.name}<button onclick="rmGroupChild(${c.id},${g.id},'${encodeURIComponent(g.name)}','${encodeURIComponent(c.name)}')">×</button></div>`
-            ).join('');
+            const childrenHtml=(g.children||[]).length > 0
+              ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-left:24px">${(g.children||[]).map(c=>
+                  `<div class="option-chip" style="border-color:#93c5fd;background:#f0f7ff" ondblclick="editGroupChild(${c.id},${g.id},'${encodeURIComponent(c.name)}')">${c.name}<button onclick="event.stopPropagation();rmGroupChild(${c.id},${g.id},'${encodeURIComponent(g.name)}','${encodeURIComponent(c.name)}')">×</button></div>`
+                ).join('')}</div>`
+              : '<div style="margin-left:24px;color:#94a3b8;font-size:11px;margin:4px 0">暂无子群</div>';
             return `<div style="margin-bottom:10px">
-              <div class="option-chip" style="font-weight:700;background:#dbeafe;border-color:#93c5fd;color:var(--primary)">${g.name}<button onclick="rmGroupParent(${g.id},'${encodeURIComponent(g.name)}')">×</button></div>
+              <div class="option-chip" style="font-weight:700;background:#dbeafe;border-color:#93c5fd;color:var(--primary)" ondblclick="editGroupParent(${g.id},'${encodeURIComponent(g.name)}')">${g.name}<button onclick="event.stopPropagation();rmGroupParent(${g.id},'${encodeURIComponent(g.name)}')">×</button></div>
               ${childrenHtml||'<div style="margin-left:24px;color:#94a3b8;font-size:11px;margin:4px 0">暂无子群</div>'}
               <div class="option-add-row" style="margin-left:24px">
                 <input class="option-add-input" id="gchild-${g.id}" placeholder="添加子群名称，多个用、隔开">
@@ -2368,7 +2412,7 @@ function renderOptsPanel() {
       h+=`<div class="option-section">
         <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text)">${cat.l}</div>
         <div class="option-list" id="olist-${cat.k}">
-          ${items.map(v=>`<div class="option-chip">${v}<button onclick="rmOpt('${cat.k}','${encodeURIComponent(v)}')">×</button></div>`).join('')||'<span style="color:#94a3b8;font-size:12px">暂无选项</span>'}
+          ${items.map(v=>`<div class="option-chip" ondblclick="editOpt('${cat.k}','${encodeURIComponent(v)}')">${v}<button onclick="event.stopPropagation();rmOpt('${cat.k}','${encodeURIComponent(v)}')">×</button></div>`).join('')||'<span style="color:#94a3b8;font-size:12px">暂无选项</span>'}
         </div>
         <div class="option-add-row">
           <input class="option-add-input" id="oinput-${cat.k}" placeholder="输入新选项（支持顿号分隔批量添加）">
@@ -2406,6 +2450,25 @@ async function rmOpt(cat, encodedVal) {
     if(cat==='departments') refreshDeptColors();
     toast('已删除','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('删除失败','error');}
+}
+
+// 双击修改扁平选项（部门、客服号等）
+async function editOpt(cat, encodedVal) {
+  const oldVal=decodeURIComponent(encodedVal);
+  const newVal=prompt('修改名称：', oldVal);
+  if(!newVal||newVal.trim()===oldVal) return;
+  showLoading();
+  try {
+    const data=await api('GET','bj_options',`?category=eq.${cat}&value=eq.${encodeURIComponent(oldVal)}`);
+    if(data.length){
+      await api('PATCH','bj_options',`?id=eq.${data[0].id}`,{value:newVal.trim()});
+      await loadOpts();
+      if(cat==='departments') refreshDeptColors();
+      toast('修改成功','success'); renderOptsPanel();
+    } else {
+      showLoading(false); toast('未找到该选项','error');
+    }
+  }catch(e){showLoading(false);toast('修改失败','error');}
 }
 
 // 群明细二级菜单：添加一级分类
@@ -2464,6 +2527,32 @@ async function rmGroupChild(childId, parentId, encodedParent, encodedChild) {
     renderOptsPanel();
   }catch(e){toast('删除失败','error');}
   showLoading(false);
+}
+
+// 双击修改一级分类名称
+async function editGroupParent(id, encodedName) {
+  const oldName=decodeURIComponent(encodedName);
+  const newName=prompt('修改分类名称：', oldName);
+  if(!newName||newName.trim()===oldName) return;
+  showLoading();
+  try {
+    await api('PATCH','bj_options',`?id=eq.${id}`,{value:newName.trim()});
+    await loadOpts();
+    showLoading(false); toast('修改成功','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('修改失败','error');}
+}
+
+// 双击修改子群名称
+async function editGroupChild(childId, parentId, encodedName) {
+  const oldName=decodeURIComponent(encodedName);
+  const newName=prompt('修改子群名称：', oldName);
+  if(!newName||newName.trim()===oldName) return;
+  showLoading();
+  try {
+    await api('PATCH','bj_options',`?id=eq.${childId}`,{value:newName.trim()});
+    await loadOpts();
+    showLoading(false); toast('修改成功','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('修改失败','error');}
 }
 
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
