@@ -379,6 +379,20 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
   </div>
 </div>
 
+<!-- ===== MODAL: Preview Caption/Poster ===== -->
+<div class="modal-overlay hidden" id="preview-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">📋 文案海报预览</div>
+      <button class="modal-close" onclick="closeModal('preview-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="preview-body"></div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal('preview-modal')">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL: Admin ===== -->
 <div class="modal-overlay hidden" id="admin-modal">
   <div class="modal modal-lg">
@@ -938,8 +952,8 @@ function renderCard(ev, slotKey) {
       '</div>';
   }
   
-  // 左键点击查看详情，右键点击编辑
-  return '<div class="event-card ' + tc + '" onclick="openDetail(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
+  // 左键点击预览文案海报，右键点击编辑
+  return '<div class="event-card ' + tc + '" onclick="openCaptionPreview(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
     extraHtml +
@@ -1581,6 +1595,62 @@ function pickFiles(e) {
 function removePendingFile(btn, fileName) {
   pendingFiles = pendingFiles.filter(f => f.name !== fileName);
   btn.parentElement.remove();
+}
+
+// ===== PREVIEW MODAL: Caption & Poster =====
+async function openCaptionPreview(id, e) {
+  if(e) e.stopPropagation();
+  const pb=document.getElementById('preview-body');
+  if(!pb){ toast('页面错误，请刷新','error'); return; }
+  showLoading(true);
+  try {
+    const data=await api('GET','bj_schedules',`?id=eq.${id}`);
+    if(!data||!data[0]){showLoading(false);toast('数据不存在','error');return;}
+    const ev=data[0];
+    showLoading(false);
+    
+    // 获取文案和海报字段
+    const circleCaption = ev.circle_caption || '';
+    const circlePoster = ev.circle_poster || '';
+    const communityCaption = ev.community_caption || '';
+    const communityPoster = ev.community_poster || '';
+    
+    let html = '';
+    
+    // 朋友圈文案海报
+    if(circleCaption || circlePoster) {
+      html += '<div style="margin-bottom:20px">';
+      html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px">📢 朋友圈宣传</div>';
+      if(circleCaption) {
+        html += '<div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:10px;white-space:pre-wrap;line-height:1.6">'+circleCaption+'</div>';
+      }
+      if(circlePoster) {
+        html += '<div style="text-align:center"><img src="'+circlePoster+'" style="max-width:100%;border-radius:8px"></div>';
+      }
+      html += '</div>';
+    }
+    
+    // 社群文案海报
+    if(communityCaption || communityPoster) {
+      html += '<div style="margin-bottom:20px">';
+      html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px">📣 社群宣传</div>';
+      if(communityCaption) {
+        html += '<div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:10px;white-space:pre-wrap;line-height:1.6">'+communityCaption+'</div>';
+      }
+      if(communityPoster) {
+        html += '<div style="text-align:center"><img src="'+communityPoster+'" style="max-width:100%;border-radius:8px"></div>';
+      }
+      html += '</div>';
+    }
+    
+    // 无内容提示
+    if(!html) {
+      html = '<div style="text-align:center;padding:30px;color:var(--text-muted)">暂无文案或海报</div>';
+    }
+    
+    pb.innerHTML = html;
+    document.getElementById('preview-modal').classList.remove('hidden');
+  }catch(e){showLoading(false);toast('加载失败','error');}
 }
 
 // ===== DETAIL MODAL =====
