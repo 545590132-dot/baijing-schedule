@@ -656,7 +656,22 @@ async function loadOpts() {
   try {
   const data=await api('GET','bj_options','');
   opts={departments:[], circleServiceAccounts:[], communityGroups:[]};
-  data.forEach(o=>{ if(opts[o.category]!==undefined) opts[o.category].push(o.value); });
+  data.forEach(o=>{
+    if(o.category==='communityGroups') {
+      if(!o.parent_id) {
+        opts.communityGroups.push({id:o.id, name:o.value, children:[]});
+      }
+    } else {
+      if(opts[o.category]!==undefined) opts[o.category].push(o.value);
+    }
+  });
+  // 将子群挂载到对应父级下
+  data.forEach(o=>{
+    if(o.category==='communityGroups' && o.parent_id) {
+      const parent=opts.communityGroups.find(g=>g.id===o.parent_id);
+      if(parent) parent.children.push({id:o.id, name:o.value});
+    }
+  });
   }catch(e){ console.warn('load opts fail',e); }
 }
 
@@ -1377,10 +1392,21 @@ function renderStep3() {
   if(!Array.isArray(md.community_time_slots)) md.community_time_slots=[];
   if(md.community_hongbao === undefined) md.community_hongbao = null;
 
-  // 群明细（社群）- 默认全选
-  const allGroups=opts.communityGroups||[];
-  if(md.community_groups.length===0 && allGroups.length>0) md.community_groups=[...allGroups];
-  const groupHtml=allGroups.map(v=>`<label class="checkbox-item ${md.community_groups.includes(v)?'checked':''}" onclick="tck(this,'community_groups','${v}')">${v}</label>`).join('');
+  // 群明细（社群）- 二级分组选择
+  const allGroupCategories=opts.communityGroups||[];
+  // 收集所有子群名称用于默认全选
+  if(md.community_groups.length===0) {
+    allGroupCategories.forEach(cat=>{ (cat.children||[]).forEach(c=>md.community_groups.push(c.name)); });
+  }
+  const groupHtml=allGroupCategories.map(cat=>{
+    const childHtml=(cat.children||[]).map(c=>
+      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" onclick="tck(this,'community_groups','${c.name}')" style="margin-left:12px">${c.name}</label>`
+    ).join('');
+    return `<div style="margin-bottom:6px">
+      <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px;padding-left:2px">${cat.name}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${childHtml||'<span style="color:#94a3b8;font-size:11px">暂无子群</span>'}</div>
+    </div>`;
+  }).join('');
   
   // 宣传形式
   const fms=['普通群发','@所有人','群置顶'];
@@ -1894,17 +1920,46 @@ const OPT_CATS=[
 function renderOptsPanel() {
   let h='';
   OPT_CATS.forEach(cat=>{
-    const items=opts[cat.k]||[];
-    h+=`<div class="option-section">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text)">${cat.l}</div>
-      <div class="option-list" id="olist-${cat.k}">
-        ${items.map(v=>`<div class="option-chip">${v}<button onclick="rmOpt('${cat.k}','${encodeURIComponent(v)}')">×</button></div>`).join('')||'<span style="color:#94a3b8;font-size:12px">暂无选项</span>'}
-      </div>
-      <div class="option-add-row">
-        <input class="option-add-input" id="oinput-${cat.k}" placeholder="输入新选项（支持顿号分隔批量添加）">
-        <button class="btn-add-opt" onclick="addOpts('${cat.k}')">添加</button>
-      </div>
-    </div>`;
+    if(cat.k==='communityGroups') {
+      // 二级菜单：群明细
+      const groups=opts.communityGroups||[];
+      h+=`<div class="option-section">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">${cat.l}</div>
+        <div id="olist-communityGroups">
+          ${groups.length===0?'<span style="color:#94a3b8;font-size:12px">暂无分类，请先添加一级分类</span>':''}
+          ${groups.map((g,gi)=>{
+            const childrenHtml=(g.children||[]).map(c=>
+              `<div class="option-chip" style="margin-left:24px;border-color:#93c5fd;background:#f0f7ff">${c.name}<button onclick="rmGroupChild(${c.id},${g.id},'${encodeURIComponent(g.name)}','${encodeURIComponent(c.name)}')">×</button></div>`
+            ).join('');
+            return `<div style="margin-bottom:10px">
+              <div class="option-chip" style="font-weight:700;background:#dbeafe;border-color:#93c5fd;color:var(--primary)">${g.name}<button onclick="rmGroupParent(${g.id},'${encodeURIComponent(g.name)}')">×</button></div>
+              ${childrenHtml||'<div style="margin-left:24px;color:#94a3b8;font-size:11px;margin:4px 0">暂无子群</div>'}
+              <div class="option-add-row" style="margin-left:24px">
+                <input class="option-add-input" id="gchild-${g.id}" placeholder="添加子群名称">
+                <button class="btn-add-opt" onclick="addGroupChild(${g.id})">添加子群</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="option-add-row" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px">
+          <input class="option-add-input" id="oinput-communityGroups" placeholder="添加一级分类名称">
+          <button class="btn-add-opt" onclick="addGroupParent()">添加分类</button>
+        </div>
+      </div>`;
+    } else {
+      // 扁平选项
+      const items=opts[cat.k]||[];
+      h+=`<div class="option-section">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text)">${cat.l}</div>
+        <div class="option-list" id="olist-${cat.k}">
+          ${items.map(v=>`<div class="option-chip">${v}<button onclick="rmOpt('${cat.k}','${encodeURIComponent(v)}')">×</button></div>`).join('')||'<span style="color:#94a3b8;font-size:12px">暂无选项</span>'}
+        </div>
+        <div class="option-add-row">
+          <input class="option-add-input" id="oinput-${cat.k}" placeholder="输入新选项（支持顿号分隔批量添加）">
+          <button class="btn-add-opt" onclick="addOpts('${cat.k}')">添加</button>
+        </div>
+      </div>`;
+    }
   });
   document.getElementById('admin-opts-panel').innerHTML=h;
 }
@@ -1929,6 +1984,54 @@ async function rmOpt(cat, encodedVal) {
   try {
     const data=await api('GET','bj_options',`?category=eq.${cat}&value=eq.${encodeURIComponent(val)}`);
     if(data.length) await api('DELETE','bj_options',`?id=eq.${data[0].id}`);
+    await loadOpts(); toast('已删除','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('删除失败','error');}
+}
+
+// 群明细二级菜单：添加一级分类
+async function addGroupParent() {
+  const name=document.getElementById('oinput-communityGroups').value.trim();
+  if(!name) return toast('请输入分类名称','error');
+  showLoading();
+  try {
+    await api('POST','bj_options','',{category:'communityGroups',value:name,parent_id:null,created_at:new Date().toISOString()});
+    await loadOpts(); document.getElementById('oinput-communityGroups').value='';
+    showLoading(false); toast('分类添加成功','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('添加失败','error');}
+}
+
+// 群明细二级菜单：添加子群
+async function addGroupChild(parentId) {
+  const input=document.getElementById('gchild-'+parentId);
+  const name=input.value.trim();
+  if(!name) return toast('请输入子群名称','error');
+  showLoading();
+  try {
+    await api('POST','bj_options','',{category:'communityGroups',value:name,parent_id:parentId,created_at:new Date().toISOString()});
+    await loadOpts();
+    showLoading(false); toast('子群添加成功','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('添加失败','error');}
+}
+
+// 群明细二级菜单：删除一级分类（同时删除子群）
+async function rmGroupParent(id, encodedName) {
+  const name=decodeURIComponent(encodedName);
+  if(!confirm(`确定删除分类"${name}"及其所有子群？`)) return;
+  showLoading();
+  try {
+    await api('DELETE','bj_options',`?id=eq.${id}`);
+    await api('DELETE','bj_options',`?parent_id=eq.${id}`);
+    await loadOpts(); toast('已删除','success'); renderOptsPanel();
+  }catch(e){showLoading(false);toast('删除失败','error');}
+}
+
+// 群明细二级菜单：删除子群
+async function rmGroupChild(childId, parentId, encodedParent, encodedChild) {
+  const childName=decodeURIComponent(encodedChild);
+  if(!confirm(`确定删除子群"${childName}"？`)) return;
+  showLoading();
+  try {
+    await api('DELETE','bj_options',`?id=eq.${childId}`);
     await loadOpts(); toast('已删除','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('删除失败','error');}
 }
