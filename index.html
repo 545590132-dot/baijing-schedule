@@ -331,6 +331,8 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
       </span>
       <button class="btn-sm btn-add hidden" id="btn-add-sch" onclick="openAddModal()">＋ 新增排期</button>
       <button class="btn-sm btn-manage hidden" id="btn-admin" onclick="openAdminModal()">⚙ 管理</button>
+      <button class="btn-sm btn-import hidden" id="btn-import" onclick="showImportMenu()" style="padding:6px 14px;background:#eff6ff;color:#2563eb;border:1.5px solid #bfdbfe;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">📤 导入</button>
+      <input type="file" id="import-file-input" accept=".csv" style="display:none" onchange="handleImportFile(event)">
       <button class="btn-sm btn-export hidden" id="btn-export" onclick="exportSchedule()" style="padding:6px 14px;background:#f0fdf4;color:#16a34a;border:1.5px solid #bbf7d0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">📥 导出</button>
       <button class="btn-sm btn-outline" onclick="doLogout()">退出</button>
     </div>
@@ -625,6 +627,7 @@ async function enterApp() {
   document.getElementById('btn-add-sch').className='btn-sm btn-add'+(isAdmin?'':' hidden');
   document.getElementById('btn-admin').className='btn-sm btn-manage'+(isSuperAdmin?'':' hidden');
   document.getElementById('btn-export').className='btn-sm btn-export'+(isSuperAdmin?'':' hidden');
+  document.getElementById('btn-import').className='btn-sm btn-import'+(isSuperAdmin?'':' hidden');
   await loadOpts();
   await refreshCalendar();
   goToToday(); // 滚动到今日所在周
@@ -964,12 +967,15 @@ function renderCard(ev, slotKey) {
       '</div>';
   } else if (isCircleSlot) {
     // 发圈时段卡片：客服号
+    var allSA = opts.circleServiceAccounts || [];
     var accountsDisplay = '-';
     if (sa.length > 0) {
-      // 检查是否是全选（假设全选时 sa 是 ["全选"] 或包含特定标记）
-      if (sa.length === 1 && (sa[0] === '全选' || sa[0] === '所有客服号')) {
-        accountsDisplay = '所有客服号';
-      } else if (sa.length > 0) {
+      // 检查是否选了所有客服号
+      if (allSA.length > 0 && sa.length >= allSA.length) {
+        var allMatch = allSA.every(function(a){ return sa.indexOf(a) >= 0; });
+        if (allMatch) accountsDisplay = '所有';
+        else accountsDisplay = sa.join('、');
+      } else {
         accountsDisplay = sa.join('、');
       }
     }
@@ -1450,12 +1456,12 @@ function renderStep3() {
   if(!Array.isArray(md.community_time_slots)) md.community_time_slots=[];
   if(md.community_hongbao === undefined) md.community_hongbao = null;
 
-  // 群明细（社群）- 二级分组选择
+  // 群明细（社群）- 二级分组选择（默认不选中）
   const allGroupCategories=opts.communityGroups||[];
-  // 收集所有子群名称用于默认全选
-  if(md.community_groups.length===0) {
-    allGroupCategories.forEach(cat=>{ (cat.children||[]).forEach(c=>md.community_groups.push(c.name)); });
-  }
+  // 已选群明细展示（带删除功能）
+  const selectedGroupHtml = md.community_groups.length > 0
+    ? md.community_groups.map(g => `<span class="option-chip" style="margin:2px 0;font-size:11px">${g}<button onclick="removeCommunityGroup('${g}')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>`).join('')
+    : '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
   const groupHtml=allGroupCategories.map(cat=>{
     const childHtml=(cat.children||[]).map(c=>
       `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" onclick="tck(this,'community_groups','${c.name}')" style="margin-left:12px">${c.name}</label>`
@@ -1531,8 +1537,9 @@ function renderStep3() {
     <div class="section-title">📣 社群宣传</div>
     <div class="form-group">
       <label class="required">群明细（可多选）</label>
+      <div id="selected-groups-display" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:6px 8px;background:#f8faff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">${selectedGroupHtml}</div>
       <div class="checkbox-group" id="f_community">${groupHtml}</div>
-      ${allGroupCategories.length === 0 ? '<div style="font-size:11px;color:var(--warning);margin-top:4px">⚠️ 暂无群明细选项，请到"选项管理"中添加</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>'}
+      ${allGroupCategories.length === 0 ? '<div style="font-size:11px;color:var(--warning);margin-top:4px">⚠️ 暂无群明细选项，请到"选项管理"中添加</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 点击下方选项进行选择</div>'}
     </div>
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
@@ -1772,6 +1779,32 @@ function tck(el, field, value) {
   if(!Array.isArray(md[field])) md[field]=[];
   if(el.classList.contains('checked')){ if(!md[field].includes(value)) md[field].push(value); }
   else md[field]=md[field].filter(v=>v!==value);
+  // 群明细选择时刷新已选展示区
+  if(field === 'community_groups') refreshSelectedGroups();
+}
+
+// 刷新已选群明细展示区
+function refreshSelectedGroups() {
+  var container = document.getElementById('selected-groups-display');
+  if (!container) return;
+  if (md.community_groups.length > 0) {
+    container.innerHTML = md.community_groups.map(function(g) {
+      return '<span class="option-chip" style="margin:2px 0;font-size:11px">' + g + '<button onclick="removeCommunityGroup(\'' + g + '\')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>';
+    }).join('');
+  } else {
+    container.innerHTML = '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
+  }
+}
+
+// 从已选群明细中移除
+function removeCommunityGroup(name) {
+  md.community_groups = (md.community_groups || []).filter(function(g){ return g !== name; });
+  // 取消对应checkbox的选中状态
+  var labels = document.querySelectorAll('#f_community .checkbox-item');
+  labels.forEach(function(label){
+    if(label.textContent.trim() === name) label.classList.remove('checked');
+  });
+  refreshSelectedGroups();
 }
 
 function pickFiles(e) {
@@ -1989,6 +2022,152 @@ async function exportSchedule() {
   }
 }
 
+// 显示导入菜单
+function showImportMenu() {
+  if(!isSuperAdmin) return toast('仅超管可操作','error');
+  var choice = confirm('📤 导入排期数据\n\n点击「确定」选择CSV文件导入\n点击「取消」下载导入模板');
+  if (choice) {
+    document.getElementById('import-file-input').click();
+  } else {
+    downloadImportTemplate();
+  }
+}
+
+// 下载导入模板
+function downloadImportTemplate() {
+  const headers = '日期,活动名称,部门,类型,负责人,朋友圈时段,朋友圈客服号,朋友圈文案,社群时段,群明细,宣传形式,是否发红包,社群文案,截图要求';
+  const example1 = '2026-06-01,测试活动,市场部,赞助,张三,上午发圈,所有客服号,测试朋友圈文案,上午群发,测试群1、测试群2,普通群发,否,测试社群文案,需要截图';
+  const csv = '\uFEFF' + headers + '\n' + example1 + '\n';
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '社群排期表_导入模板.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('模板已下载', 'success');
+}
+
+// 处理导入文件
+async function handleImportFile(event) {
+  if(!isSuperAdmin) return toast('仅超管可操作','error');
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+
+  const confirmImport = confirm('将导入CSV数据到排期表。\n\n提示：可先下载导入模板查看格式要求。\n\n是否继续？');
+  if (!confirmImport) return;
+
+  showLoading(true);
+  try {
+    const text = await file.text();
+    const lines = text.replace(/^\uFEFF/, '').split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) { showLoading(false); toast('CSV文件为空或无数据行','error'); return; }
+
+    // 解析表头
+    const headers = parseCSVLine(lines[0]);
+    const dateIdx = headers.indexOf('日期');
+    const nameIdx = headers.indexOf('活动名称');
+    const deptIdx = headers.indexOf('部门');
+    const typeIdx = headers.indexOf('类型');
+    const ownerIdx = headers.indexOf('负责人');
+    const circleSlotIdx = headers.indexOf('朋友圈时段');
+    const circleSAIdx = headers.indexOf('朋友圈客服号');
+    const circleCaptionIdx = headers.indexOf('朋友圈文案');
+    const commSlotIdx = headers.indexOf('社群时段');
+    const commGroupIdx = headers.indexOf('群明细');
+    const commFormIdx = headers.indexOf('宣传形式');
+    const hongbaoIdx = headers.indexOf('是否发红包');
+    const commCaptionIdx = headers.indexOf('社群文案');
+    const screenshotIdx = headers.indexOf('截图要求');
+
+    if (dateIdx < 0 || nameIdx < 0) {
+      showLoading(false); toast('CSV缺少必要列（日期、活动名称），请使用正确模板','error'); return;
+    }
+
+    const batchId = crypto.randomUUID ? crypto.randomUUID() : 'imp-' + Date.now();
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const cols = parseCSVLine(lines[i]);
+        if (!cols[dateIdx] || !cols[nameIdx]) continue;
+
+        const date = cols[dateIdx].trim();
+        const circleSlots = circleSlotIdx >= 0 && cols[circleSlotIdx] ? cols[circleSlotIdx].split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [];
+        const circleSA = circleSAIdx >= 0 && cols[circleSAIdx] ? parseServiceAccounts(cols[circleSAIdx]) : [];
+        const commSlots = commSlotIdx >= 0 && cols[commSlotIdx] ? cols[commSlotIdx].split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [];
+        const commGroups = commGroupIdx >= 0 && cols[commGroupIdx] ? cols[commGroupIdx].split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [];
+        const commForms = commFormIdx >= 0 && cols[commFormIdx] ? cols[commFormIdx].split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [];
+
+        await api('POST', 'bj_schedules', '', {
+          date: date,
+          activity_name: (cols[nameIdx] || '').trim(),
+          department: deptIdx >= 0 ? (cols[deptIdx] || '').trim() : '',
+          activity_type: typeIdx >= 0 ? (cols[typeIdx] || '').trim() : '',
+          owner: ownerIdx >= 0 ? (cols[ownerIdx] || '').trim() : '',
+          circle_time_slot: circleSlots.length > 0 ? circleSlots.join(',') : '',
+          circle_service_accounts: JSON.stringify(circleSA),
+          circle_caption: circleCaptionIdx >= 0 ? (cols[circleCaptionIdx] || '').trim() : '',
+          community_time_slot: commSlots.length > 0 ? commSlots.join(',') : '',
+          community_group_details: JSON.stringify(commGroups),
+          community_publish_forms: JSON.stringify(commForms),
+          has_hongbao_community: hongbaoIdx >= 0 && (cols[hongbaoIdx] || '').trim() === '是',
+          community_caption: commCaptionIdx >= 0 ? (cols[commCaptionIdx] || '').trim() : '',
+          screenshot_requirement: screenshotIdx >= 0 ? (cols[screenshotIdx] || '').trim() : '',
+          batch_id: batchId,
+          is_grayed: false,
+          created_at: new Date().toISOString()
+        });
+        successCount++;
+      } catch(err) {
+        failCount++;
+        console.warn('导入第' + (i+1) + '行失败:', err);
+      }
+    }
+
+    showLoading(false);
+    let msg = '导入完成：成功 ' + successCount + ' 条';
+    if (failCount > 0) msg += '，失败 ' + failCount + ' 条';
+    toast(msg, successCount > 0 ? 'success' : 'error');
+    await refreshCalendar();
+  } catch(e) {
+    showLoading(false);
+    toast('导入失败：' + (e.message||''), 'error');
+  }
+}
+
+// 解析CSV行（处理引号内的逗号）
+function parseCSVLine(line) {
+  var result = [];
+  var current = '';
+  var inQuotes = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i+1] === '"') { current += '"'; i++; }
+        else inQuotes = false;
+      } else { current += ch; }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { result.push(current); current = ''; }
+      else current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// 解析客服号字段（"所有"或"所有客服号"→全部客服号列表）
+function parseServiceAccounts(raw) {
+  var allSA = opts.circleServiceAccounts || [];
+  var s = (raw || '').trim();
+  if (s === '所有' || s === '所有客服号' || s === '全选') return allSA.slice();
+  return s.split(/[、,，]/).map(function(v){ return v.trim(); }).filter(Boolean);
+}
+
 let curAdminTab='users';
 
 async function openAdminModal() {
@@ -2065,7 +2244,7 @@ function renderOptsPanel() {
               <div class="option-chip" style="font-weight:700;background:#dbeafe;border-color:#93c5fd;color:var(--primary)">${g.name}<button onclick="rmGroupParent(${g.id},'${encodeURIComponent(g.name)}')">×</button></div>
               ${childrenHtml||'<div style="margin-left:24px;color:#94a3b8;font-size:11px;margin:4px 0">暂无子群</div>'}
               <div class="option-add-row" style="margin-left:24px">
-                <input class="option-add-input" id="gchild-${g.id}" placeholder="添加子群名称">
+                <input class="option-add-input" id="gchild-${g.id}" placeholder="添加子群名称，多个用、隔开">
                 <button class="btn-add-opt" onclick="addGroupChild(${g.id})">添加子群</button>
               </div>
             </div>`;
@@ -2130,16 +2309,20 @@ async function addGroupParent() {
   }catch(e){showLoading(false);toast('添加失败','error');}
 }
 
-// 群明细二级菜单：添加子群
+// 群明细二级菜单：添加子群（支持'、'批量添加）
 async function addGroupChild(parentId) {
   const input=document.getElementById('gchild-'+parentId);
-  const name=input.value.trim();
-  if(!name) return toast('请输入子群名称','error');
+  const raw=input.value.trim();
+  if(!raw) return toast('请输入子群名称','error');
+  const names=raw.includes('、')||raw.includes(',')||raw.includes('，')? raw.split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [raw];
   showLoading();
   try {
-    await api('POST','bj_options','',{category:'communityGroups',value:name,parent_id:parentId,created_at:new Date().toISOString()});
+    for(const name of names){
+      await api('POST','bj_options','',{category:'communityGroups',value:name,parent_id:parentId,created_at:new Date().toISOString()});
+    }
     await loadOpts();
-    showLoading(false); toast('子群添加成功','success'); renderOptsPanel();
+    input.value='';
+    showLoading(false); toast(`成功添加${names.length}个子群`,'success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('添加失败','error');}
 }
 
