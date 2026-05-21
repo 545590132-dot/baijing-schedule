@@ -696,10 +696,24 @@ async function loadOpts() {
   data.forEach(o=>{
     if(o.category==='communityGroups' && o.parent_id) {
       const parent=opts.communityGroups.find(g=>g.id===o.parent_id);
-      if(parent) parent.children.push({id:o.id, name:o.value});
+      if(parent) parent.children.push({id:o.id, name:o.value, count:parseGroupName(o.value).count});
     }
   });
   }catch(e){ console.warn('load opts fail',e); }
+}
+
+// 解析群名称：'名称(人数)' → {name:'名称', count:人数}，无括号时count=0
+function parseGroupName(raw) {
+  if (!raw) return {name: '', count: 0};
+  var m = String(raw).match(/^(.+?)[\(（](\d+)[\)）]$/);
+  return m ? {name: m[1].trim(), count: parseInt(m[2], 10)} : {name: raw.trim(), count: 0};
+}
+
+// 计算群名称列表的总人数
+function sumGroupCount(groups) {
+  var total = 0;
+  groups.forEach(function(g) { total += parseGroupName(g).count; });
+  return total;
 }
 
 // ===== 部门色块 =====
@@ -843,7 +857,7 @@ function renderCalendar() {
   // 四个时段定义
   const TIME_SLOTS = [
     { key: '上午群发', label: '上午群发', color: '#10b981' },
-    { key: '上午发圈', label: '上午发圈', color: '#8b5cf6' },
+    { key: '中午发圈', label: '中午发圈', color: '#8b5cf6' },
     { key: '下午群发', label: '下午群发', color: '#f59e0b' },
     { key: '下午发圈', label: '下午发圈', color: '#ef4444' }
   ];
@@ -1017,21 +1031,25 @@ function renderCard(ev, slotKey) {
   
   if (isCommunitySlot) {
     // 群发时段卡片：宣传形式、是否发红包、群明细（hover显示全部）
-    var forms = cf.length > 0 ? cf.join('、') : '-';
+    var hasSpecialForm = cf.some(function(f){ return f !== '普通群发'; });
+    var formColorStyle = hasSpecialForm ? 'color:#ef4444;font-weight:600' : '';
+    var formsHtml = cf.length > 0
+      ? cf.map(function(f){ return f === '普通群发' ? f : '<span style="color:#ef4444;font-weight:600">' + f + '</span>'; }).join('、')
+      : '-';
     var hasHongbao = ev.has_hongbao_community ? '是' : '否';
-    var firstGroup = cg.length > 0 ? (cg[0].name || cg[0].group_name || JSON.stringify(cg[0])) : '-';
-    
-    // 构建群明细tooltip
+    var firstGroup = cg.length > 0 ? (parseGroupName(cg[0]).name || JSON.stringify(cg[0])) : '-';
+
+    // 构建群明细tooltip（显示纯名称）
     var groupsTooltip = '';
     if (cg.length > 0) {
-      var allGroups = cg.map(g => g.name || g.group_name || JSON.stringify(g)).join('<br>');
+      var allGroups = cg.map(g => parseGroupName(g).name).join('<br>');
       groupsTooltip = '<span class="card-tooltip" title="' + allGroups.replace(/"/g, '&quot;') + '">' + (cg.length > 1 ? firstGroup + '...' : firstGroup) + '</span>';
     } else {
       groupsTooltip = '-';
     }
     
     extraHtml = '<div class="card-extra">' +
-      '<div class="card-row"><span class="card-label">形式：</span>' + forms + '</div>' +
+      '<div class="card-row" style="' + formColorStyle + '"><span class="card-label">形式：</span>' + formsHtml + '</div>' +
       '<div class="card-row"><span class="card-label">红包：</span>' + hasHongbao + '</div>' +
       '<div class="card-row"><span class="card-label">群：</span>' + groupsTooltip + '</div>' +
       '</div>';
@@ -1198,7 +1216,7 @@ async function openEditModal(id) {
     md.circle_dates = rawCircleDates.map(function(d){
       if(d.endsWith('_AM')||d.endsWith('_PM')) return d;
       var slots = [];
-      if(circleSlots.includes('上午发圈')) slots.push(d+'_AM');
+      if(circleSlots.includes('中午发圈')) slots.push(d+'_AM');
       if(circleSlots.includes('下午发圈')) slots.push(d+'_PM');
       return slots.length>0 ? slots : [d+'_AM']; // 无时段信息默认上午
     }).flat();
@@ -1210,6 +1228,20 @@ async function openEditModal(id) {
       return slots.length>0 ? slots : [d+'_AM'];
     }).flat();
     md.community_groups=j(md.community_group_details||'[]');
+    // 兼容旧数据：旧数据的community_groups存的是纯名称，需要映射到带人数的完整值
+    if(md.community_groups.length > 0) {
+      var allCats = opts.communityGroups || [];
+      md.community_groups = md.community_groups.map(function(gName) {
+        for (var i = 0; i < allCats.length; i++) {
+          var children = allCats[i].children || [];
+          for (var j = 0; j < children.length; j++) {
+            if (children[j].name === gName) return children[j].name; // 已是完整值
+            if (parseGroupName(children[j].name).name === gName) return children[j].name; // 旧名称匹配新值
+          }
+        }
+        return gName; // 没找到对应项，保持原值
+      });
+    }
     md.community_forms=j(md.community_publish_forms||'[]');
     md.contract_files=j(md.contract_files||'[]');
     
@@ -1333,7 +1365,7 @@ function renderStep2() {
   if(md.service_accounts.length===0 && allSA.length>0) md.service_accounts=[...allSA];
   const saHtml=allSA.map(v=>`<label class="checkbox-item ${md.service_accounts.includes(v)?'checked':''}" onclick="tck(this,'service_accounts','${v}')">${v}</label>`).join('');
   
-  // 渲染日期选择器（上下两格：上午发圈/下午发圈）
+  // 渲染日期选择器（上下两格：中午发圈/下午发圈）
   const curDates = md.circle_dates || [];
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -1398,7 +1430,7 @@ function renderStep2() {
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
       <div id="circle_dates_wrap">${datePickerHtml}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击上午=上午发圈，点击下午=下午发圈，绿色=上午，黄色=下午</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击上午=中午发圈，点击下午=下午发圈，绿色=中午，黄色=下午</div>
     </div>
     <div class="form-group">
       <label>宣传文案</label>
@@ -1540,7 +1572,7 @@ function step2Next() {
   if (!md.circle_dates || md.circle_dates.length === 0) return toast('请至少选择一个宣发日期（上午/下午）', 'error');
   
   // 根据选择的日期时段自动生成 circle_time_slots
-  md.circle_time_slots = md.circle_dates.filter(d => d.endsWith('_AM')).map(d => '上午发圈')
+  md.circle_time_slots = md.circle_dates.filter(d => d.endsWith('_AM')).map(d => '中午发圈')
     .concat(md.circle_dates.filter(d => d.endsWith('_PM')).map(d => '下午发圈'))
     .filter((v, i, a) => a.indexOf(v) === i);
   
@@ -1562,22 +1594,30 @@ function renderStep3() {
 
   // 群明细（社群）- 二级分组选择（默认不选中）
   const allGroupCategories=opts.communityGroups||[];
-  // 已选群明细展示（带删除功能）
+  // 已选群明细展示（带删除功能，只显示名称）
+  const selectedGroupCount = sumGroupCount(md.community_groups);
   const selectedGroupHtml = md.community_groups.length > 0
-    ? md.community_groups.map(g => `<span class="option-chip" style="margin:2px 0;font-size:11px">${g}<button onclick="removeCommunityGroup('${g}')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>`).join('')
+    ? md.community_groups.map(g => { var p=parseGroupName(g); return '<span class="option-chip" style="margin:2px 0;font-size:11px">' + p.name + '<button onclick="removeCommunityGroup(\'' + g.replace(/'/g,"\\'") + '\')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>'; }).join('')
+    + (selectedGroupCount > 0 ? '<span style="font-size:11px;color:var(--primary);font-weight:600;margin-left:6px">👥 共' + selectedGroupCount + '人</span>' : '')
     : '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
   const groupHtml=allGroupCategories.map(cat=>{
+    // 计算该分类下已选子群的人数合计
+    var catSelectedCount = 0;
+    (cat.children||[]).forEach(function(c){
+      if(md.community_groups.includes(c.name)) catSelectedCount += (c.count||0);
+    });
+    var countBadge = catSelectedCount > 0 ? ' <span style="color:#f59e0b;font-weight:600;font-size:10px">👥' + catSelectedCount + '</span>' : '';
     const childHtml=(cat.children||[]).map(c=>
-      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${c.name}</label>`
+      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" data-value="${c.name}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${parseGroupName(c.name).name}${c.count?'<span style="font-size:10px;color:var(--text-muted);margin-left:2px">('+c.count+')</span>':''}</label>`
     ).join('');
     return `<div style="margin-bottom:6px">
-      <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px;padding-left:2px">${cat.name}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px;padding-left:2px">${cat.name}${countBadge}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px" onmouseup="swipeEnd()">${childHtml||'<span style="color:#94a3b8;font-size:11px">暂无子群</span>'}</div>
     </div>`;
   }).join('');
   
   // 宣传形式
-  const fms=['普通群发','@所有人','群置顶'];
+  const fms=['普通群发','@所有人','群置顶','群公告'];
   const formHtml=fms.map(f=>`<label class="checkbox-item ${(md.community_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'community_forms','${f}')">${f}</label>`).join('');
   
   // 渲染日期选择器（上下两格：上午群发/下午群发）
@@ -1734,6 +1774,142 @@ async function submitSchedule() {
   
   // 验证是否发红包
   if (md.community_hongbao === undefined) return toast('请选择是否发红包', 'error');
+
+  // ===== 排期规则校验 =====
+  // 获取所有日期对应的周信息
+  var allScheduleDates = [...(md.circle_dates||[]).map(d=>d.replace(/_[AP]M$/,'')), ...(md.community_dates||[]).map(d=>d.replace(/_[AP]M$/,''))];
+  var uniqueDates = [...new Set(allScheduleDates)].sort();
+
+  // 获取同活动名称的现有排期（排除当前编辑批次）
+  var excludeBatch = editingId && md.batch_id ? md.batch_id : null;
+  var existingSchedules = [];
+  try {
+    var existQ = '?activity_name=eq.' + encodeURIComponent(md.activity_name) + '&select=id,date,time_slots,circle_time_slots,community_time_slots,community_group_details,batch_id';
+    existQ += '&order=date.asc';
+    var existData = await api('GET','bj_schedules', existQ);
+    if(existData) {
+      existingSchedules = excludeBatch ? existData.filter(r => r.batch_id !== excludeBatch) : existData;
+    }
+  } catch(ruleErr) { console.warn('规则校验查询失败，跳过校验', ruleErr); }
+
+  // 获取周ISO号
+  function getWeekKey(dateStr) {
+    var d = new Date(dateStr);
+    d.setHours(0,0,0,0);
+    var oneJan = new Date(d.getFullYear(),0,1);
+    var weekNum = Math.ceil(((d - oneJan) / 86400000 + oneJan.getDay() + 1) / 7);
+    return d.getFullYear() + '-W' + String(weekNum).padStart(2,'0');
+  }
+
+  // 判断群是否是官方群（一级分类名包含"官方"）
+  function isOfficialGroup(groupName) {
+    var allCats = opts.communityGroups || [];
+    for (var i = 0; i < allCats.length; i++) {
+      if (allCats[i].name.indexOf('官方') >= 0) {
+        var children = allCats[i].children || [];
+        for (var j = 0; j < children.length; j++) {
+          if (children[j].name === groupName || children[j].name.indexOf(groupName) === 0) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // 按周统计现有排期
+  var weekCircleDates = {};    // weekKey -> Set<dateStr>
+  var weekOfficialDates = {};  // weekKey -> Set<dateStr>
+  var weekNonOfficialDates = {}; // weekKey -> Set<dateStr>
+  existingSchedules.forEach(function(r) {
+    var wk = getWeekKey(r.date);
+    var cSlots = j(r.circle_time_slots || '[]');
+    var cmSlots = j(r.community_time_slots || '[]');
+    if (cSlots.length > 0) {
+      if (!weekCircleDates[wk]) weekCircleDates[wk] = new Set();
+      weekCircleDates[wk].add(r.date);
+    }
+    var groups = j(r.community_group_details || '[]');
+    var hasOfficial = false, hasNonOfficial = false;
+    groups.forEach(function(g) {
+      var gName = g.name || g.group_name || g || '';
+      if (isOfficialGroup(gName)) hasOfficial = true; else hasNonOfficial = true;
+    });
+    if (cmSlots.length > 0 && hasOfficial) {
+      if (!weekOfficialDates[wk]) weekOfficialDates[wk] = new Set();
+      weekOfficialDates[wk].add(r.date);
+    }
+    if (cmSlots.length > 0 && hasNonOfficial) {
+      if (!weekNonOfficialDates[wk]) weekNonOfficialDates[wk] = new Set();
+      weekNonOfficialDates[wk].add(r.date);
+    }
+  });
+
+  // 校验新排期
+  var newCircleDates = (md.circle_dates||[]).map(d => d.replace(/_[AP]M$/,''));
+  var newCommunityDates = (md.community_dates||[]).map(d => d.replace(/_[AP]M$/,''));
+  var newGroups = md.community_groups || [];
+
+  var newHasOfficial = false, newHasNonOfficial = false;
+  newGroups.forEach(function(g) { if(isOfficialGroup(g)) newHasOfficial=true; else newHasNonOfficial=true; });
+
+  // 规则1：每周朋友圈最多2个时段（间隔至少1天）
+  var circleUniqueDates = [...new Set(newCircleDates)];
+  // 先检查新增自身是否满足间隔要求
+  for (var ci = 0; ci < circleUniqueDates.length - 1; ci++) {
+    var d1 = new Date(circleUniqueDates[ci]);
+    var d2 = new Date(circleUniqueDates[ci + 1]);
+    if ((d2 - d1) / 86400000 < 1) {
+      return toast('排期规则：每周朋友圈时段之间至少间隔1天', 'error');
+    }
+  }
+  // 检查加上现有排期后每周朋友圈总数
+  circleUniqueDates.forEach(function(cd) {
+    var wk = getWeekKey(cd);
+    var existingCount = (weekCircleDates[wk] || new Set()).size;
+    // 如果该周已有排期，检查间隔
+    if (weekCircleDates[wk]) {
+      weekCircleDates[wk].forEach(function(ed) {
+        var diff = Math.abs((new Date(cd) - new Date(ed)) / 86400000);
+        if (diff < 1) {
+          return toast('排期规则：每周朋友圈时段之间至少间隔1天（与 ' + ed + ' 冲突）', 'error');
+        }
+      });
+    }
+  });
+  // 按周汇总朋友圈总日期数
+  var weekCircleTotal = {};
+  circleUniqueDates.forEach(function(cd) {
+    var wk = getWeekKey(cd);
+    weekCircleTotal[wk] = (weekCircleTotal[wk] || 0) + 1 + ((weekCircleDates[wk] || new Set()).size);
+  });
+  for (var wkKey in weekCircleTotal) {
+    if (weekCircleTotal[wkKey] > 2) {
+      return toast('排期规则：同一活动每周最多选择2个朋友圈时段（' + wkKey + ' 已有' + ((weekCircleDates[wkKey]||new Set()).size) + '个，新增' + circleUniqueDates.length + '个）', 'error');
+    }
+  }
+
+  // 规则2：每周官方群最多1个时段
+  if (newHasOfficial) {
+    var officialUniqueDates = [...new Set(newCommunityDates)];
+    officialUniqueDates.forEach(function(cd) {
+      var wk = getWeekKey(cd);
+      var existingOfficialCount = (weekOfficialDates[wk] || new Set()).size;
+      if (existingOfficialCount + 1 > 1) {
+        return toast('排期规则：同一活动每周最多选择1个官方群时段（' + wkKey + ' 已占用）', 'error');
+      }
+    });
+  }
+
+  // 规则3：每周非官方群最多1个时段
+  if (newHasNonOfficial) {
+    var nonOfficialUniqueDates = [...new Set(newCommunityDates)];
+    nonOfficialUniqueDates.forEach(function(cd) {
+      var wk = getWeekKey(cd);
+      var existingCount = (weekNonOfficialDates[wk] || new Set()).size;
+      if (existingCount + 1 > 1) {
+        return toast('排期规则：同一活动每周最多选择1个非官方群时段（' + wkKey + ' 已占用）', 'error');
+      }
+    });
+  }
   
   // 收集所有数据
   var screenshotEl = document.getElementById('f_screenshot');
@@ -1746,7 +1922,7 @@ async function submitSchedule() {
   // circle_dates 格式: ['2026-06-01_AM', '2026-06-01_PM', ...]
   const circleDateSlots = (md.circle_dates || []).map(d => {
     var isAM = d.endsWith('_AM');
-    return { date: d.replace(/_[AP]M$/, ''), slot: isAM ? '上午发圈' : '下午发圈' };
+    return { date: d.replace(/_[AP]M$/, ''), slot: isAM ? '中午发圈' : '下午发圈' };
   });
   const communityDateSlots = (md.community_dates || []).map(d => {
     var isAM = d.endsWith('_AM');
@@ -1930,9 +2106,13 @@ function refreshSelectedGroups() {
   var container = document.getElementById('selected-groups-display');
   if (!container) return;
   if (md.community_groups.length > 0) {
-    container.innerHTML = md.community_groups.map(function(g) {
-      return '<span class="option-chip" style="margin:2px 0;font-size:11px">' + g + '<button onclick="removeCommunityGroup(\'' + g + '\')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>';
+    var totalCount = sumGroupCount(md.community_groups);
+    var html = md.community_groups.map(function(g) {
+      var p = parseGroupName(g);
+      return '<span class="option-chip" style="margin:2px 0;font-size:11px">' + p.name + '<button onclick="removeCommunityGroup(\'' + g.replace(/'/g,"\\'") + '\')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>';
     }).join('');
+    if (totalCount > 0) html += '<span style="font-size:11px;color:var(--primary);font-weight:600;margin-left:6px">👥 共' + totalCount + '人</span>';
+    container.innerHTML = html;
   } else {
     container.innerHTML = '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
   }
@@ -1944,7 +2124,8 @@ function removeCommunityGroup(name) {
   // 取消对应checkbox的选中状态
   var labels = document.querySelectorAll('#f_community .checkbox-item');
   labels.forEach(function(label){
-    if(label.textContent.trim() === name) label.classList.remove('checked');
+    // label 的 data-value 属性存储完整值，匹配移除
+    if(label.getAttribute('data-value') === name) label.classList.remove('checked');
   });
   refreshSelectedGroups();
 }
@@ -2187,7 +2368,7 @@ function showImportMenu() {
 // 下载导入模板
 function downloadImportTemplate() {
   const headers = '日期,活动名称,部门,类型,负责人,朋友圈时段,朋友圈客服号,朋友圈文案,社群时段,群明细,宣传形式,是否发红包,社群文案,截图要求';
-  const example1 = '2026-06-01,测试活动,市场部,赞助,张三,上午发圈,所有客服号,测试朋友圈文案,上午群发,测试群1、测试群2,普通群发,否,测试社群文案,需要截图';
+  const example1 = '2026-06-01,测试活动,市场部,赞助,张三,中午发圈,所有客服号,测试朋友圈文案,上午群发,测试群1、测试群2,普通群发,否,测试社群文案,需要截图';
   const csv = '\uFEFF' + headers + '\n' + example1 + '\n';
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -2397,7 +2578,7 @@ function renderOptsPanel() {
               <div class="option-chip" style="font-weight:700;background:#dbeafe;border-color:#93c5fd;color:var(--primary)" ondblclick="editGroupParent(${g.id},'${encodeURIComponent(g.name)}')">${g.name}<button onclick="event.stopPropagation();rmGroupParent(${g.id},'${encodeURIComponent(g.name)}')">×</button></div>
               ${childrenHtml||'<div style="margin-left:24px;color:#94a3b8;font-size:11px;margin:4px 0">暂无子群</div>'}
               <div class="option-add-row" style="margin-left:24px">
-                <input class="option-add-input" id="gchild-${g.id}" placeholder="添加子群名称，多个用、隔开">
+                <input class="option-add-input" id="gchild-${g.id}" placeholder="名称(人数)，多个用、隔开">
                 <button class="btn-add-opt" onclick="addGroupChild(${g.id})">添加子群</button>
               </div>
             </div>`;
@@ -2485,12 +2666,23 @@ async function addGroupParent() {
   }catch(e){showLoading(false);toast('添加失败','error');}
 }
 
-// 群明细二级菜单：添加子群（支持'、'批量添加）
+// 群明细二级菜单：添加子群（支持批量添加，格式：名称(人数)、名称(人数)）
 async function addGroupChild(parentId) {
   const input=document.getElementById('gchild-'+parentId);
   const raw=input.value.trim();
   if(!raw) return toast('请输入子群名称','error');
-  const names=raw.includes('、')||raw.includes(',')||raw.includes('，')? raw.split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : [raw];
+  var names;
+  if(raw.includes('、')||raw.includes(',')||raw.includes('，')) {
+    names=raw.split(/[、,，]/).map(function(s){return s.trim();}).filter(Boolean);
+  } else {
+    names=[raw];
+  }
+  // 验证每个名称格式：必须有(人数)后缀
+  for(var i=0;i<names.length;i++){
+    if(!/\([\d]+\)$/.test(names[i]) && !/（[\d]+）$/.test(names[i])){
+      return toast('子群格式错误，请使用"名称(人数)"格式，例如：测试群(500)','error');
+    }
+  }
   showLoading();
   try {
     for(const name of names){
@@ -2498,7 +2690,7 @@ async function addGroupChild(parentId) {
     }
     await loadOpts();
     input.value='';
-    showLoading(false); toast(`成功添加${names.length}个子群`,'success'); renderOptsPanel();
+    showLoading(false); toast('成功添加'+names.length+'个子群','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('添加失败','error');}
 }
 
