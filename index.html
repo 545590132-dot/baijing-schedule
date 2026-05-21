@@ -199,6 +199,8 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .option-chip{display:flex;align-items:center;gap:3px;background:#fff;border:1px solid var(--border);padding:3px 8px;border-radius:7px;font-size:12px}
 .option-chip button{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0;font-size:11px;line-height:1}
 .option-chip button:hover{color:var(--danger)}
+.drag-item.dragging{opacity:0.4;border-style:dashed;border-color:var(--primary)}
+.drag-item.drag-over{border-color:var(--primary);background:#dbeafe;transform:scale(1.05)}
 .option-add-row{display:flex;gap:7px}
 .option-add-input{flex:1;padding:6px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;outline:none}
 .option-add-input:focus{border-color:var(--primary)}
@@ -681,23 +683,38 @@ function goToToday() {
 // ===== OPTIONS =====
 async function loadOpts() {
   try {
-  const data=await api('GET','bj_options','');
+  const data=await api('GET','bj_options','?order=created_at.asc');
   opts={departments:[], circleServiceAccounts:[], communityGroups:[]};
   data.forEach(o=>{
     if(o.category==='communityGroups') {
       if(!o.parent_id) {
-        opts.communityGroups.push({id:o.id, name:o.value, children:[]});
+        opts.communityGroups.push({id:o.id, name:o.value, sort_order:o.sort_order||0, created_at:o.created_at, children:[]});
       }
     } else {
       if(opts[o.category]!==undefined) opts[o.category].push(o.value);
     }
   });
-  // 将子群挂载到对应父级下
+  // 将子群挂载到对应父级下（按sort_order优先，其次created_at）
   data.forEach(o=>{
     if(o.category==='communityGroups' && o.parent_id) {
       const parent=opts.communityGroups.find(g=>g.id===o.parent_id);
-      if(parent) parent.children.push({id:o.id, name:o.value, count:parseGroupName(o.value).count});
+      if(parent) parent.children.push({id:o.id, name:o.value, sort_order:o.sort_order||0, created_at:o.created_at, count:parseGroupName(o.value).count});
     }
+  });
+  // 排序：有sort_order的优先，无sort_order的按created_at
+  opts.communityGroups.forEach(g=>{
+    g.children.sort((a,b)=>{
+      if(a.sort_order && b.sort_order) return a.sort_order - b.sort_order;
+      if(a.sort_order) return -1;
+      if(b.sort_order) return 1;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+  });
+  opts.communityGroups.sort((a,b)=>{
+    if(a.sort_order && b.sort_order) return a.sort_order - b.sort_order;
+    if(a.sort_order) return -1;
+    if(b.sort_order) return 1;
+    return new Date(a.created_at) - new Date(b.created_at);
   });
   }catch(e){ console.warn('load opts fail',e); }
 }
@@ -1617,7 +1634,7 @@ function renderStep3() {
       `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" data-value="${c.name}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${parseGroupName(c.name).name}</label>`
     ).join('');
     return `<div style="margin-bottom:12px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0">
-      <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:6px;padding-left:2px">${cat.name}${countBadge}${selectedInfo}</div>
+      <div id="cat-badge-${cat.id}" style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:6px;padding-left:2px">${cat.name}${countBadge}${selectedInfo}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px" onmouseup="swipeEnd()">${childHtml||'<span style="color:#94a3b8;font-size:11px">暂无子群</span>'}</div>
     </div>`;
   }).join('');
@@ -2067,24 +2084,21 @@ async function submitSchedule() {
 
 // 鼠标划选群明细子群
 var _swiping = false;
-var _swipeFired = false; // 标记划选刚触发，防止click重复toggle
+var _swipeFired = false; // 标记划选实际发生了mouseover（区分单击和拖拽）
 var _swipeMode = true; // true=选中, false=取消
 
 function swipeStart(e, el, field, value) {
   if (e.button !== 0) return; // 只响应左键
-  e.preventDefault(); // 阻止后续click事件
   _swiping = true;
-  _swipeFired = true;
+  _swipeFired = false; // 重置，等swipeMove真正触发时再设为true
   // 根据当前项的选中状态决定划选模式：已选→取消，未选→选中
   _swipeMode = !el.classList.contains('checked');
-  swipeMove(e, el, field, value);
-  // 短暂延迟后清除标志，防止影响后续正常点击
-  setTimeout(function(){ _swipeFired = false; }, 50);
 }
 
 function swipeMove(e, el, field, value) {
   if (!_swiping) return;
   e.preventDefault();
+  _swipeFired = true; // 标记发生了实际的拖拽划选
   var shouldCheck = _swipeMode;
   var isChecked = el.classList.contains('checked');
   if (shouldCheck === isChecked) return; // 已经是目标状态，跳过
@@ -2114,10 +2128,9 @@ function tck(el, field, value) {
   if(field === 'community_groups') refreshSelectedGroups();
 }
 
-// 刷新已选群明细展示区
+// 刷新已选群明细展示区 + 一级分类人数徽章
 function refreshSelectedGroups() {
   var container = document.getElementById('selected-groups-display');
-  if (!container) return;
   if (md.community_groups.length > 0) {
     var totalCount = sumGroupCount(md.community_groups);
     var html = md.community_groups.map(function(g) {
@@ -2125,10 +2138,27 @@ function refreshSelectedGroups() {
       return '<span class="option-chip" style="margin:2px 0;font-size:11px">' + p.name + '<button onclick="removeCommunityGroup(\'' + g.replace(/'/g,"\\'") + '\')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0;font-size:11px;line-height:1">×</button></span>';
     }).join('');
     if (totalCount > 0) html += '<span style="font-size:11px;color:var(--primary);font-weight:600;margin-left:6px">👥 共' + totalCount + '人</span>';
-    container.innerHTML = html;
+    if (container) container.innerHTML = html;
   } else {
-    container.innerHTML = '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
+    if (container) container.innerHTML = '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
   }
+  // 刷新每个一级分类的人数徽章
+  var allCats = opts.communityGroups || [];
+  allCats.forEach(function(cat) {
+    var badgeEl = document.getElementById('cat-badge-' + cat.id);
+    if (!badgeEl) return;
+    var catCount = 0;
+    var catNames = [];
+    (cat.children || []).forEach(function(c) {
+      if (md.community_groups.includes(c.name)) {
+        catCount += (c.count || 0);
+        catNames.push(parseGroupName(c.name).name);
+      }
+    });
+    var countHtml = catCount > 0 ? ' <span style="color:#f59e0b;font-weight:600;font-size:10px">👥' + catCount + '人</span>' : '';
+    var namesHtml = catNames.length > 0 ? ' <span style="color:#10b981;font-size:10px">(' + catNames.join('、') + ')</span>' : '';
+    badgeEl.innerHTML = cat.name + countHtml + namesHtml;
+  });
 }
 
 // 从已选群明细中移除
@@ -2571,6 +2601,67 @@ const OPT_CATS=[
   {k:'communityGroups',l:'社群 · 群明细'},
 ];
 
+// 子群拖拽排序初始化
+var _dragSrcEl = null;
+function initDragSort() {
+  document.querySelectorAll('.drag-container').forEach(function(container) {
+    container.querySelectorAll('.drag-item').forEach(function(item) {
+      item.addEventListener('dragstart', function(e) {
+        _dragSrcEl = this;
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.dataset.id);
+      });
+      item.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        container.querySelectorAll('.drag-item').forEach(function(el) { el.classList.remove('drag-over'); });
+        _dragSrcEl = null;
+      });
+      item.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        this.classList.add('drag-over');
+      });
+      item.addEventListener('dragleave', function() {
+        this.classList.remove('drag-over');
+      });
+      item.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.classList.remove('drag-over');
+        if (_dragSrcEl === this) return;
+        // 交换DOM位置
+        var allItems = Array.from(container.querySelectorAll('.drag-item'));
+        var fromIdx = allItems.indexOf(_dragSrcEl);
+        var toIdx = allItems.indexOf(this);
+        if (fromIdx < toIdx) {
+          container.insertBefore(_dragSrcEl, this.nextSibling);
+        } else {
+          container.insertBefore(_dragSrcEl, this);
+        }
+        // 保存新排序到数据库
+        var parentId = container.dataset.parent;
+        saveDragOrder(parentId, container);
+      });
+    });
+  });
+}
+
+// 保存拖拽排序结果
+async function saveDragOrder(parentId, container) {
+  try {
+    var items = container.querySelectorAll('.drag-item');
+    for (var i = 0; i < items.length; i++) {
+      var id = items[i].dataset.id;
+      await api('PATCH', 'bj_options', '?id=eq.' + id, { sort_order: i + 1 });
+    }
+    await loadOpts();
+    toast('排序已保存', 'success');
+  } catch(e) {
+    toast('排序保存失败', 'error');
+  }
+}
+
 function renderOptsPanel() {
   let h='';
   OPT_CATS.forEach(cat=>{
@@ -2583,8 +2674,8 @@ function renderOptsPanel() {
           ${groups.length===0?'<span style="color:#94a3b8;font-size:12px">暂无分类，请先添加一级分类</span>':''}
           ${groups.map((g,gi)=>{
             const childrenHtml=(g.children||[]).length > 0
-              ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-left:24px">${(g.children||[]).map(c=>
-                  `<div class="option-chip" style="border-color:#93c5fd;background:#f0f7ff" ondblclick="editGroupChild(${c.id},${g.id},'${encodeURIComponent(c.name)}')">${c.name}<button onclick="event.stopPropagation();rmGroupChild(${c.id},${g.id},'${encodeURIComponent(g.name)}','${encodeURIComponent(c.name)}')">×</button></div>`
+              ? `<div class="drag-container" data-parent="${g.id}" style="display:flex;flex-wrap:wrap;gap:5px;margin-left:24px">${(g.children||[]).map((c,ci)=>
+                  `<div class="option-chip drag-item" draggable="true" data-id="${c.id}" data-sort="${ci}" style="border-color:#93c5fd;background:#f0f7ff;cursor:grab" ondblclick="editGroupChild(${c.id},${g.id},'${encodeURIComponent(c.name)}')">${c.name}<button onclick="event.stopPropagation();rmGroupChild(${c.id},${g.id},'${encodeURIComponent(g.name)}','${encodeURIComponent(c.name)}')">×</button></div>`
                 ).join('')}</div>`
               : '<div style="margin-left:24px;color:#94a3b8;font-size:11px;margin:4px 0">暂无子群</div>';
             return `<div style="margin-bottom:10px">
@@ -2618,6 +2709,8 @@ function renderOptsPanel() {
     }
   });
   document.getElementById('admin-opts-panel').innerHTML=h;
+  // 初始化子群拖拽排序
+  initDragSort();
 }
 
 async function addOpts(cat) {
