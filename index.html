@@ -1639,7 +1639,7 @@ function renderStep3() {
     var countBadge = catSelectedCount > 0 ? ' <span style="color:#f59e0b;font-weight:600;font-size:10px">👥' + catSelectedCount + '人</span>' : '';
     var selectedInfo = catSelectedNames.length > 0 ? ' <span style="color:#10b981;font-size:10px">(' + catSelectedNames.join('、') + ')</span>' : '';
     const childHtml=(cat.children||[]).map(c=>
-      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" data-value="${c.name}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${parseGroupName(c.name).name}</label>`
+      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" data-value="${c.name}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${parseGroupName(c.name).name}</label>`
     ).join('');
     return `<div style="margin-bottom:12px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0">
       <div id="cat-badge-${cat.id}" style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:6px;padding-left:2px">${cat.name}${countBadge}${selectedInfo}</div>
@@ -2143,19 +2143,28 @@ function swipeStart(e, el, field, value) {
   _swipeMode = !el.classList.contains('checked');
 }
 
-function swipeMove(e, el, field, value) {
+function swipeMoveHandler(e) {
   if (!_swiping) return;
-  e.preventDefault();
+  // 用 elementFromPoint 检测鼠标当前悬停的元素（解决 gap 导致 onmouseover 不触发的问题）
+  var target = document.elementFromPoint(e.clientX, e.clientY);
+  if (!target) return;
+  // 向上查找到 checkbox-item
+  var chip = target.closest('.checkbox-item[data-value]');
+  if (!chip) return;
+  var field = 'community_groups';
+  var value = chip.getAttribute('data-value');
+  if (!value) return;
+
   _swipeFired = true; // 标记发生了实际的拖拽划选
   var shouldCheck = _swipeMode;
-  var isChecked = el.classList.contains('checked');
+  var isChecked = chip.classList.contains('checked');
   if (shouldCheck === isChecked) return; // 已经是目标状态，跳过
   if (!Array.isArray(md[field])) md[field] = [];
   if (shouldCheck) {
-    el.classList.add('checked');
+    chip.classList.add('checked');
     if (!md[field].includes(value)) md[field].push(value);
   } else {
-    el.classList.remove('checked');
+    chip.classList.remove('checked');
     md[field] = md[field].filter(function(v) { return v !== value; });
   }
   if (field === 'community_groups') refreshSelectedGroups();
@@ -2164,6 +2173,11 @@ function swipeMove(e, el, field, value) {
 function swipeEnd() {
   _swiping = false;
 }
+
+// 全局 mousemove 监听（用于划选检测）
+document.addEventListener('mousemove', swipeMoveHandler);
+// 全局 mouseup 监听（防止鼠标移出容器后 _swiping 不重置）
+document.addEventListener('mouseup', swipeEnd);
 
 function tck(el, field, value) {
   // 如果刚被划选触发过，跳过（防止mousedown+click重复toggle）
