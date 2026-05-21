@@ -2334,7 +2334,7 @@ async function rmGroupParent(id, encodedName) {
   try {
     await api('DELETE','bj_options',`?id=eq.${id}`);
     await api('DELETE','bj_options',`?parent_id=eq.${id}`);
-    await loadOpts(); toast('已删除','success'); renderOptsPanel();
+    await loadOpts(); showLoading(false); toast('已删除','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('删除失败','error');}
 }
 
@@ -2345,7 +2345,7 @@ async function rmGroupChild(childId, parentId, encodedParent, encodedChild) {
   showLoading();
   try {
     await api('DELETE','bj_options',`?id=eq.${childId}`);
-    await loadOpts(); toast('已删除','success'); renderOptsPanel();
+    await loadOpts(); showLoading(false); toast('已删除','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('删除失败','error');}
 }
 
