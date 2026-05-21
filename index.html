@@ -96,6 +96,11 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .event-card.type-sponsor{border-left-color:#f59e0b}
 .event-card.type-business{border-left-color:#10b981}
 .event-card.type-exchange{border-left-color:#8b5cf6}
+/* 搜索匹配卡片高亮 */
+.event-card.search-match{background:linear-gradient(135deg,#fef9c3 0%,#fef08a 100%);border-color:#eab308;box-shadow:0 0 0 2px rgba(234,179,8,.3),0 2px 8px rgba(234,179,8,.2)}
+.event-card.search-match:hover{box-shadow:0 0 0 2px rgba(234,179,8,.4),0 4px 12px rgba(234,179,8,.3)}
+.event-card.search-match .event-name{color:#92400e}
+.event-card.search-match .event-owner{color:#a16207}
 .event-name{font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
 .event-owner{color:var(--text-muted);font-size:9px;margin-bottom:2px}
 .event-tags{display:flex;flex-wrap:wrap;gap:2px}
@@ -953,7 +958,9 @@ function renderCard(ev, slotKey) {
   }
   
   // 左键点击预览文案海报，右键点击编辑
-  return '<div class="event-card ' + tc + '" onclick="openCaptionPreview(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
+  // 搜索模式下整块高亮
+  var searchHighlight = searchQuery ? ' search-match' : '';
+  return '<div class="event-card ' + tc + searchHighlight + '" onclick="openCaptionPreview(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
     extraHtml +
