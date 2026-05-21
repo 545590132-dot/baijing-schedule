@@ -789,16 +789,18 @@ function onSearchInput(val) {
 async function refreshCalendar() {
   showLoading();
   try {
+    // 只查询日历展示所需的字段，排除 poster/caption/files 等大字段防止超时
+    const calSelect = 'id,date,activity_name,department,activity_type,owner,time_slot,time_slots,circle_time_slots,circle_service_accounts,community_time_slots,community_group_details,community_publish_forms,has_hongbao_community,is_grayed,batch_id,created_by';
     let data;
     if(searchQuery) {
       const q=encodeURIComponent(searchQuery);
-      data=await api('GET','bj_schedules',`?or=(activity_name.ilike.%25${q}%25,department.ilike.%25${q}%25,owner.ilike.%25${q}%25,activity_type.ilike.%25${q}%25)&order=date.asc`);
+      data=await api('GET','bj_schedules',`?or=(activity_name.ilike.%25${q}%25,department.ilike.%25${q}%25,owner.ilike.%25${q}%25,activity_type.ilike.%25${q}%25)&select=${calSelect}&order=date.asc`);
     } else {
       // 获取当月全部数据
       const mEnd = new Date(monthStart);
       mEnd.setMonth(mEnd.getMonth() + 1);
       mEnd.setDate(mEnd.getDate() - 1);
-      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(monthStart)}&date=lte.${fmtDate(mEnd)}&order=date.asc`);
+      data=await api('GET','bj_schedules',`?date=gte.${fmtDate(monthStart)}&date=lte.${fmtDate(mEnd)}&select=${calSelect}&order=date.asc`);
     }
     scheduleMap={};
     data.forEach(item=>{ const k=`${item.date}`; if(!scheduleMap[k]) scheduleMap[k]=[]; scheduleMap[k].push(item); });
