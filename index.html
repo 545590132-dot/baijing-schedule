@@ -94,6 +94,12 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .event-card.type-sponsor{border-left-color:#f59e0b}
 .event-card.type-business{border-left-color:#10b981}
 .event-card.type-exchange{border-left-color:#8b5cf6}
+/* 超管灰色标记 */
+.event-card.card-grayed{background:#d1d5db !important;border-color:#9ca3af !important;opacity:.7}
+.event-card.card-grayed:hover{opacity:.85}
+.event-card.card-grayed .event-name{color:#374151}
+.event-card.card-grayed .event-owner{color:#6b7280}
+
 /* 搜索匹配卡片高亮 */
 .event-card.search-match{background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border-color:#93c5fd;box-shadow:0 0 0 2px rgba(59,130,246,.2),0 2px 8px rgba(59,130,246,.15)}
 .event-card.search-match:hover{box-shadow:0 0 0 2px rgba(59,130,246,.3),0 4px 12px rgba(59,130,246,.2)}
@@ -955,10 +961,11 @@ function renderCard(ev, slotKey) {
       '</div>';
   }
   
-  // 左键点击预览文案海报，右键点击编辑
-  // 搜索模式下整块高亮
+  // 左键点击预览文案海报，右键点击编辑，双击切换灰色标记（超管）
   var searchHighlight = searchQuery ? ' search-match' : '';
-  return '<div class="event-card ' + tc + searchHighlight + '" onclick="openCaptionPreview(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
+  var grayedClass = ev.is_grayed ? ' card-grayed' : '';
+  var dblClick = isSuperAdmin ? ` ondblclick="toggleGray(${ev.id},this,event)"` : '';
+  return '<div class="event-card ' + tc + searchHighlight + grayedClass + '" onclick="openCaptionPreview(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')"' + dblClick + '>' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
     extraHtml +
@@ -967,6 +974,28 @@ function renderCard(ev, slotKey) {
 
 function dbClick(date, slot, e) {
   if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot);
+}
+
+// 超管双击切换灰色标记
+async function toggleGray(id, el, e) {
+  if(!isSuperAdmin) return;
+  e.stopPropagation();
+  e.preventDefault();
+  
+  // 找到同批次的所有卡片
+  var cards = document.querySelectorAll('.event-card[onclick*="' + id + '"]');
+  
+  // 如果当前未标记 → 标灰
+  if(!el.classList.contains('card-grayed')) {
+    el.classList.add('card-grayed');
+    // 同批次也标灰
+    cards.forEach(c => c.classList.add('card-grayed'));
+    await api('PATCH','bj_schedules',`?id=eq.${id}`,{ is_grayed: true });
+  } else {
+    el.classList.remove('card-grayed');
+    cards.forEach(c => c.classList.remove('card-grayed'));
+    await api('PATCH','bj_schedules',`?id=eq.${id}`,{ is_grayed: false });
+  }
 }
 
 // ===== SCHEDULE MODAL =====
@@ -1566,6 +1595,7 @@ async function submitSchedule() {
       community_caption: md.community_caption || '',
       community_poster: md.community_poster || '',
       has_hongbao_community: md.community_hongbao,
+      is_grayed: false,
       contract_files: JSON.stringify(allFiles),
       screenshot_requirement: screenshotReq,
       updated_at: new Date().toISOString()
