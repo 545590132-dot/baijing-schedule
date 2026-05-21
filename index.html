@@ -784,7 +784,7 @@ function renderCalendar() {
     // 2. 四个时段行
     TIME_SLOTS.forEach(slot => {
       h += `<div class="cal-row slot-row" data-slot="${slot.key}">`;
-      h += `<div class="cal-slot-label-fixed" style="background:${slot.color};color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;padding:4px;">${slot.label}</div>`;
+      h += `<div class="cal-slot-label-fixed">${slot.label}</div>`;
       for (let di = 0; di < 7; di++) {
         const d = new Date(firstDay);
         d.setDate(firstDay.getDate() + wk * 7 + di);
