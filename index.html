@@ -2330,23 +2330,30 @@ async function addGroupChild(parentId) {
 async function rmGroupParent(id, encodedName) {
   const name=decodeURIComponent(encodedName);
   if(!confirm(`确定删除分类"${name}"及其所有子群？`)) return;
-  showLoading();
+  showLoading(true);
   try {
     await api('DELETE','bj_options',`?id=eq.${id}`);
     await api('DELETE','bj_options',`?parent_id=eq.${id}`);
-    await loadOpts(); showLoading(false); toast('已删除','success'); renderOptsPanel();
-  }catch(e){showLoading(false);toast('删除失败','error');}
+    await loadOpts();
+    toast('已删除','success');
+    renderOptsPanel();
+  }catch(e){toast('删除失败','error');}
+  showLoading(false);
 }
 
 // 群明细二级菜单：删除子群
 async function rmGroupChild(childId, parentId, encodedParent, encodedChild) {
   const childName=decodeURIComponent(encodedChild);
   if(!confirm(`确定删除子群"${childName}"？`)) return;
-  showLoading();
+  showLoading(true);
   try {
     await api('DELETE','bj_options',`?id=eq.${childId}`);
-    await loadOpts(); showLoading(false); toast('已删除','success'); renderOptsPanel();
-  }catch(e){showLoading(false);toast('删除失败','error');}
+    await loadOpts();
+    toast('已删除','success');
+    renderOptsPanel();
+  }catch(e){toast('删除失败','error');}
+  showLoading(false);
+}
 }
 
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
