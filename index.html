@@ -2351,6 +2351,8 @@ function swipeMoveHandler(e) {
 
 function swipeEnd() {
   _swiping = false;
+  // 延迟重置 _swipeFired，确保后续 click 事件仍能检测到（防止划选后的 click 误触）
+  setTimeout(function(){ _swipeFired = false; }, 50);
 }
 
 // 全局 mousemove 监听（用于划选检测）
