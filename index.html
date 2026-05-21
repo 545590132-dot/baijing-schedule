@@ -1036,7 +1036,8 @@ function renderCard(ev, slotKey) {
     var formsHtml = cf.length > 0
       ? cf.map(function(f){ return f === '普通群发' ? f : '<span style="color:#ef4444;font-weight:600">' + f + '</span>'; }).join('、')
       : '-';
-    var hasHongbao = ev.has_hongbao_community ? '是' : '否';
+    var hasHongbao = ev.has_hongbao_community;
+    var hongbaoHtml = hasHongbao ? '<span style="color:#ef4444;font-weight:600">是</span>' : '否';
     var firstGroup = cg.length > 0 ? (parseGroupName(cg[0]).name || JSON.stringify(cg[0])) : '-';
 
     // 构建群明细tooltip（显示纯名称）
@@ -1050,7 +1051,7 @@ function renderCard(ev, slotKey) {
     
     extraHtml = '<div class="card-extra">' +
       '<div class="card-row" style="' + formColorStyle + '"><span class="card-label">形式：</span>' + formsHtml + '</div>' +
-      '<div class="card-row"><span class="card-label">红包：</span>' + hasHongbao + '</div>' +
+      '<div class="card-row"><span class="card-label">红包：</span>' + hongbaoHtml + '</div>' +
       '<div class="card-row"><span class="card-label">群：</span>' + groupsTooltip + '</div>' +
       '</div>';
   } else if (isCircleSlot) {
@@ -1601,17 +1602,22 @@ function renderStep3() {
     + (selectedGroupCount > 0 ? '<span style="font-size:11px;color:var(--primary);font-weight:600;margin-left:6px">👥 共' + selectedGroupCount + '人</span>' : '')
     : '<span style="color:#94a3b8;font-size:11px">请从下方选择群明细</span>';
   const groupHtml=allGroupCategories.map(cat=>{
-    // 计算该分类下已选子群的人数合计
+    // 计算该分类下已选子群的人数合计（按分类分开统计）
     var catSelectedCount = 0;
+    var catSelectedNames = [];
     (cat.children||[]).forEach(function(c){
-      if(md.community_groups.includes(c.name)) catSelectedCount += (c.count||0);
+      if(md.community_groups.includes(c.name)){
+        catSelectedCount += (c.count||0);
+        catSelectedNames.push(parseGroupName(c.name).name);
+      }
     });
-    var countBadge = catSelectedCount > 0 ? ' <span style="color:#f59e0b;font-weight:600;font-size:10px">👥' + catSelectedCount + '</span>' : '';
+    var countBadge = catSelectedCount > 0 ? ' <span style="color:#f59e0b;font-weight:600;font-size:10px">👥' + catSelectedCount + '人</span>' : '';
+    var selectedInfo = catSelectedNames.length > 0 ? ' <span style="color:#10b981;font-size:10px">(' + catSelectedNames.join('、') + ')</span>' : '';
     const childHtml=(cat.children||[]).map(c=>
-      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" data-value="${c.name}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${parseGroupName(c.name).name}${c.count?'<span style="font-size:10px;color:var(--text-muted);margin-left:2px">('+c.count+')</span>':''}</label>`
+      `<label class="checkbox-item ${md.community_groups.includes(c.name)?'checked':''}" data-value="${c.name}" onclick="tck(this,'community_groups','${c.name}')" onmousedown="swipeStart(event,this,'community_groups','${c.name}')" onmouseover="swipeMove(event,this,'community_groups','${c.name}')" style="margin-left:12px;user-select:none">${parseGroupName(c.name).name}</label>`
     ).join('');
-    return `<div style="margin-bottom:6px">
-      <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px;padding-left:2px">${cat.name}${countBadge}</div>
+    return `<div style="margin-bottom:12px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:6px;padding-left:2px">${cat.name}${countBadge}${selectedInfo}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px" onmouseup="swipeEnd()">${childHtml||'<span style="color:#94a3b8;font-size:11px">暂无子群</span>'}</div>
     </div>`;
   }).join('');
@@ -2061,14 +2067,19 @@ async function submitSchedule() {
 
 // 鼠标划选群明细子群
 var _swiping = false;
+var _swipeFired = false; // 标记划选刚触发，防止click重复toggle
 var _swipeMode = true; // true=选中, false=取消
 
 function swipeStart(e, el, field, value) {
   if (e.button !== 0) return; // 只响应左键
+  e.preventDefault(); // 阻止后续click事件
   _swiping = true;
+  _swipeFired = true;
   // 根据当前项的选中状态决定划选模式：已选→取消，未选→选中
   _swipeMode = !el.classList.contains('checked');
   swipeMove(e, el, field, value);
+  // 短暂延迟后清除标志，防止影响后续正常点击
+  setTimeout(function(){ _swipeFired = false; }, 50);
 }
 
 function swipeMove(e, el, field, value) {
@@ -2093,6 +2104,8 @@ function swipeEnd() {
 }
 
 function tck(el, field, value) {
+  // 如果刚被划选触发过，跳过（防止mousedown+click重复toggle）
+  if (_swipeFired) return;
   el.classList.toggle('checked');
   if(!Array.isArray(md[field])) md[field]=[];
   if(el.classList.contains('checked')){ if(!md[field].includes(value)) md[field].push(value); }
