@@ -331,6 +331,7 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
       </span>
       <button class="btn-sm btn-add hidden" id="btn-add-sch" onclick="openAddModal()">＋ 新增排期</button>
       <button class="btn-sm btn-manage hidden" id="btn-admin" onclick="openAdminModal()">⚙ 管理</button>
+      <button class="btn-sm btn-export hidden" id="btn-export" onclick="exportSchedule()" style="padding:6px 14px;background:#f0fdf4;color:#16a34a;border:1.5px solid #bbf7d0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">📥 导出</button>
       <button class="btn-sm btn-outline" onclick="doLogout()">退出</button>
     </div>
   </div>
@@ -370,6 +371,7 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
       <button class="btn-modal-cancel" onclick="closeModal('sch-modal')">取消</button>
       <button class="btn-modal-prev hidden" id="sch-prev-btn" onclick="goPrevStep()">← 上一步</button>
       <button class="btn-modal-next" id="sch-next-btn">下一步 →</button>
+      <button class="btn-modal-del hidden" id="sch-del-btn" onclick="deleteEditing()" style="margin-left:auto;padding:7px 16px;background:#fef2f2;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">🗑 删除</button>
     </div>
   </div>
 </div>
@@ -622,6 +624,7 @@ async function enterApp() {
   rb.textContent=isSuperAdmin?'超级管理员':isAdmin?'管理员':'游客'; rb.className='user-role'+(isAdmin?' admin':'');
   document.getElementById('btn-add-sch').className='btn-sm btn-add'+(isAdmin?'':' hidden');
   document.getElementById('btn-admin').className='btn-sm btn-manage'+(isSuperAdmin?'':' hidden');
+  document.getElementById('btn-export').className='btn-sm btn-export'+(isSuperAdmin?'':' hidden');
   await loadOpts();
   await refreshCalendar();
   goToToday(); // 滚动到今日所在周
@@ -1039,12 +1042,38 @@ async function toggleGray(id, el, e) {
 }
 
 // ===== SCHEDULE MODAL =====
+
+// 删除当前编辑的排期（整个批次）
+async function deleteEditing() {
+  if(!editingId) return;
+  var batchId = md.batch_id;
+  var msg = batchId ? '确定删除该批次所有排期？此操作不可恢复！' : '确定删除该排期？此操作不可恢复！';
+  if(!confirm(msg)) return;
+  showLoading(true);
+  try {
+    if(batchId) {
+      await api('DELETE','bj_schedules',`?batch_id=eq.${batchId}`);
+    } else {
+      await api('DELETE','bj_schedules',`?id=eq.${editingId}`);
+    }
+    toast('已删除','success');
+    closeModal('sch-modal');
+    editingId = null;
+    showLoading(false);
+    await refreshCalendar();
+  } catch(e) {
+    showLoading(false);
+    toast('删除失败：' + (e.message||''), 'error');
+  }
+}
+
 function openAddModal(preDate='', preSlot='') {
   if(!isAdmin) return toast('管理员可操作','error');
   editingId=null; pendingFiles=[]; md={date:preDate, slot:preSlot, time_slot:preSlot};
   pickerMonth = new Date(); // 重置日期选择器月份
   currentStep = 1; // 重置步骤
   document.getElementById('sch-modal-title').textContent='新增排期';
+  document.getElementById('sch-del-btn').classList.add('hidden');
   // 先打开 modal，再渲染内容（避免 JS 错误时 modal 卡死）
   document.getElementById('sch-modal').classList.remove('hidden');
   try {
@@ -1101,6 +1130,7 @@ async function openEditModal(id) {
     currentStep = 1;
     document.getElementById('sch-modal-title').textContent='编辑排期（同一批次）';
     document.getElementById('sch-modal').classList.remove('hidden');
+    document.getElementById('sch-del-btn').classList.remove('hidden');
     showLoading(false);
     try { renderStep1(); updateNavButtons(); } catch(e2){ toast('表单渲染失败','error'); console.error(e2); }
   }catch(e){showLoading(false);toast('加载失败','error');}
@@ -1901,6 +1931,64 @@ async function delSchedule(id) {
 }
 
 // ===== ADMIN MODAL =====
+
+// 导出排期表为 CSV
+async function exportSchedule() {
+  if(!isSuperAdmin) return toast('仅超管可操作','error');
+  showLoading(true);
+  try {
+    const data = await api('GET','bj_schedules','?select=*&order=date.asc,activity_name.asc');
+    if(!data || data.length === 0) { showLoading(false); toast('暂无数据可导出','error'); return; }
+
+    // 构建 CSV
+    var BOM = '\uFEFF';
+    var headers = ['日期','活动名称','部门','类型','负责人','朋友圈时段','朋友圈客服号','朋友圈文案','社群时段','群明细','宣传形式','是否发红包','社群文案','截图要求','灰色标记'];
+    var rows = [headers.join(',')];
+
+    data.forEach(function(ev) {
+      var circleSlots = j(ev.circle_time_slots || '[]');
+      var commSlots = j(ev.community_time_slots || '[]');
+      var sa = j(ev.circle_service_accounts || '[]');
+      var groups = j(ev.community_group_details || '[]');
+      var forms = j(ev.community_publish_forms || '[]');
+      var groupNames = Array.isArray(groups) ? groups.map(function(g){ return g.name || g.group_name || g; }).join('、') : '';
+
+      rows.push([
+        ev.date || '',
+        (ev.activity_name || '').replace(/,/g, '，'),
+        ev.department || '',
+        ev.activity_type || '',
+        (ev.owner || '').replace(/,/g, '，'),
+        circleSlots.join('、'),
+        Array.isArray(sa) ? sa.join('、') : sa,
+        (ev.circle_caption || '').replace(/"/g, '""').replace(/\n/g, ' '),
+        commSlots.join('、'),
+        groupNames.replace(/,/g, '，'),
+        Array.isArray(forms) ? forms.join('、') : forms,
+        ev.has_hongbao_community ? '是' : '否',
+        (ev.community_caption || '').replace(/"/g, '""').replace(/\n/g, ' '),
+        (ev.screenshot_requirement || '').replace(/"/g, '""').replace(/\n/g, ' '),
+        ev.is_grayed ? '是' : '否'
+      ].map(function(c){ return '"' + c + '"'; }).join(','));
+    });
+
+    var csv = BOM + rows.join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '社群排期表_' + fmtDate(new Date()) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showLoading(false);
+    toast('导出成功，共 ' + data.length + ' 条', 'success');
+  } catch(e) {
+    showLoading(false);
+    toast('导出失败：' + (e.message||''), 'error');
+  }
+}
+
 let curAdminTab='users';
 
 async function openAdminModal() {
