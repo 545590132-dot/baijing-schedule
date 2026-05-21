@@ -88,12 +88,9 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .cal-cell.today-col.admin-cell:hover{background:#dbeafe}
 .cal-cell.dim-cell{background:#fafafa;opacity:.6}
 
-/* 事件卡片 */
+/* 部门色块 - 基于活动部门动态分配 */
 .event-card{background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 5px;margin-bottom:2px;font-size:10px;cursor:pointer;transition:all .15s;border-left:3px solid var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.05)}
 .event-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.1);transform:translateY(-1px)}
-.event-card.type-sponsor{border-left-color:#f59e0b}
-.event-card.type-business{border-left-color:#10b981}
-.event-card.type-exchange{border-left-color:#8b5cf6}
 /* 超管灰色标记 */
 .event-card.card-grayed{background:#d1d5db !important;border-color:#9ca3af !important;opacity:.7}
 .event-card.card-grayed:hover{opacity:.85}
@@ -338,11 +335,7 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
     </div>
   </div>
 
-  <div class="dept-legend">
-  <div class="dept-legend-item"><span class="dept-legend-dot" style="background:#f59e0b"></span>赞助</div>
-  <div class="dept-legend-item"><span class="dept-legend-dot" style="background:#10b981"></span>商务</div>
-  <div class="dept-legend-item"><span class="dept-legend-dot" style="background:#8b5cf6"></span>置换</div>
-</div>
+  <div class="dept-legend" id="dept-legend"></div>
 <div class="cal-nav">
     <button class="cal-nav-btn" onclick="changeMonth(-1)">‹</button>
     <div class="cal-nav-title" id="cal-nav-title"></div>
@@ -532,14 +525,22 @@ function showLoading(show=true) {
 }
 
 async function api(method, table, params='', body=null) {
-  const opts2 = { method, headers: {...HEADERS} };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const opts2 = { method, headers: {...HEADERS}, signal: controller.signal };
   if(body) opts2.body = JSON.stringify(body);
   if(method==='POST') opts2.headers['Prefer']='return=representation';
   if(method==='PATCH') opts2.headers['Prefer']='return=representation';
-  const r = await fetch(`${SB_URL}/rest/v1/${table}${params}`, opts2);
-  if(!r.ok) { const t=await r.text(); throw new Error(t); }
-  if(method==='DELETE') return true;
-  const txt=await r.text(); return txt?JSON.parse(txt):[];
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${table}${params}`, opts2);
+    clearTimeout(timeoutId);
+    if(!r.ok) { const t=await r.text(); throw new Error(t); }
+    if(method==='DELETE') return true;
+    const txt=await r.text(); return txt?JSON.parse(txt):[];
+  } catch(e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
 }
 
 // ===== AUTH =====
@@ -578,11 +579,15 @@ async function doLogin() {
   if(!phone||!pass) return showAuthErr('请输入账号和密码');
   showLoading();
   try {
-    // 先测试数据库连通性
+    // 先测试数据库连通性（10秒超时）
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       const testR = await fetch(`${SB_URL}/rest/v1/bj_users?limit=1`, {
-        headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
+        headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if(testR.status === 401 || testR.status === 403) {
         showLoading(false);
         return showAuthErr('❌ 权限不足（' + testR.status + '）：RLS策略未正确配置。请到Supabase控制台检查是否执行了"CREATE POLICY"语句。');
@@ -629,6 +634,14 @@ async function enterApp() {
   document.getElementById('btn-export').className='btn-sm btn-export'+(isSuperAdmin?'':' hidden');
   document.getElementById('btn-import').className='btn-sm btn-import'+(isSuperAdmin?'':' hidden');
   await loadOpts();
+  // 注入部门色块动态CSS并渲染图例
+  var existingDeptStyle = document.getElementById('dept-color-style');
+  if(existingDeptStyle) existingDeptStyle.remove();
+  var deptStyle = document.createElement('style');
+  deptStyle.id = 'dept-color-style';
+  deptStyle.textContent = getDeptColorCSS();
+  document.head.appendChild(deptStyle);
+  renderDeptLegend();
   await refreshCalendar();
   goToToday(); // 滚动到今日所在周
 }
@@ -679,6 +692,49 @@ async function loadOpts() {
     }
   });
   }catch(e){ console.warn('load opts fail',e); }
+}
+
+// ===== 部门色块 =====
+const DEPT_PALETTE = ['#f59e0b','#10b981','#8b5cf6','#ef4444','#3b82f6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+let _deptColorCache = {};
+
+function getDeptColorMap() {
+  var depts = opts.departments || [];
+  var map = {};
+  depts.forEach(function(d, i) {
+    map[d] = 'dept-color-' + (i % DEPT_PALETTE.length);
+  });
+  return map;
+}
+
+function getDeptColorCSS() {
+  var depts = opts.departments || [];
+  var css = '';
+  depts.forEach(function(d, i) {
+    css += '.event-card.dept-color-' + (i % DEPT_PALETTE.length) + '{border-left-color:' + DEPT_PALETTE[i % DEPT_PALETTE.length] + '}\n';
+  });
+  return css;
+}
+
+function renderDeptLegend() {
+  var depts = opts.departments || [];
+  var el = document.getElementById('dept-legend');
+  if(!el) return;
+  el.innerHTML = depts.map(function(d, i) {
+    var color = DEPT_PALETTE[i % DEPT_PALETTE.length];
+    return '<div class="dept-legend-item"><span class="dept-legend-dot" style="background:' + color + '"></span>' + d + '</div>';
+  }).join('');
+}
+
+function refreshDeptColors() {
+  var existingDeptStyle = document.getElementById('dept-color-style');
+  if(existingDeptStyle) existingDeptStyle.remove();
+  var deptStyle = document.createElement('style');
+  deptStyle.id = 'dept-color-style';
+  deptStyle.textContent = getDeptColorCSS();
+  document.head.appendChild(deptStyle);
+  renderDeptLegend();
+  refreshCalendar();
 }
 
 // ===== CALENDAR =====
@@ -935,7 +991,11 @@ function renderCard(ev, slotKey) {
   var sa=j(ev.circle_service_accounts||'[]');
   var cg=j(ev.community_group_details||'[]');
   var cf=j(ev.community_publish_forms||'[]');
-  var tc = ev.activity_type==='赞助'?'type-sponsor':ev.activity_type==='商务'?'type-business':ev.activity_type==='置换'?'type-exchange':'';
+  var tc = '';
+  if(ev.department) {
+    var deptColors = getDeptColorMap();
+    tc = deptColors[ev.department] || '';
+  }
   var nameHtml = highlightText(ev.activity_name || '', searchQuery);
   var ownerHtml = highlightText(ev.owner || '', searchQuery);
   
@@ -2281,6 +2341,8 @@ async function addOpts(cat) {
   try {
     for(const v of vals){ if(!opts[cat].includes(v)) await api('POST','bj_options','',{category:cat,value:v,created_at:new Date().toISOString()}); }
     await loadOpts(); document.getElementById(`oinput-${cat}`).value='';
+    // 如果修改的是部门，刷新色块图例和CSS
+    if(cat==='departments') refreshDeptColors();
     showLoading(false);
     toast('添加成功','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('添加失败','error');}
@@ -2293,7 +2355,9 @@ async function rmOpt(cat, encodedVal) {
   try {
     const data=await api('GET','bj_options',`?category=eq.${cat}&value=eq.${encodeURIComponent(val)}`);
     if(data.length) await api('DELETE','bj_options',`?id=eq.${data[0].id}`);
-    await loadOpts(); toast('已删除','success'); renderOptsPanel();
+    await loadOpts();
+    if(cat==='departments') refreshDeptColors();
+    toast('已删除','success'); renderOptsPanel();
   }catch(e){showLoading(false);toast('删除失败','error');}
 }
 
