@@ -2086,6 +2086,12 @@ document.addEventListener('keydown',e=>{
     else doRegister();
   }
 });
+
+// 点击弹窗外部区域（overlay 背景）自动关闭
+document.addEventListener('mousedown',function(e){
+  var overlay = e.target.closest('.modal-overlay:not(.hidden)');
+  if(overlay && e.target === overlay) overlay.classList.add('hidden');
+});
 </script>
 </body>
 </html>
