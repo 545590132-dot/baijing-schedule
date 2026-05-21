@@ -977,10 +977,11 @@ function renderCard(ev, slotKey) {
   }
   
   // 左键点击预览文案海报，右键点击编辑，双击切换灰色标记（超管）
+  // 用延时区分单击/双击，防止双击时误触单击弹窗
   var searchHighlight = searchQuery ? ' search-match' : '';
   var grayedClass = ev.is_grayed ? ' card-grayed' : '';
-  var dblClick = isSuperAdmin ? ` ondblclick="toggleGray(${ev.id},this,event)"` : '';
-  return '<div class="event-card ' + tc + searchHighlight + grayedClass + '" onclick="openCaptionPreview(' + ev.id + ',event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')"' + dblClick + '>' +
+  var grayAttr = isSuperAdmin ? ' data-sid="' + ev.id + '"' : '';
+  return '<div class="event-card ' + tc + searchHighlight + grayedClass + '"' + grayAttr + ' onclick="cardClick(' + ev.id + ',this,event)" oncontextmenu="event.preventDefault();openEditModal(' + ev.id + ')">' +
     '<div class="event-name">' + nameHtml + '</div>' +
     '<div class="event-owner">&#128100; ' + ownerHtml + '</div>' +
     extraHtml +
@@ -991,27 +992,44 @@ function dbClick(date, slot, e) {
   if(!isAdmin) return; e.stopPropagation(); openAddModal(date, slot);
 }
 
-// 超管双击切换灰色标记
+// 用延时区分单击和双击，防止双击时误触发单击
+var _clickTimer = null;
+function cardClick(id, el, e) {
+  if(_clickTimer) { clearTimeout(_clickTimer); _clickTimer = null; return; }
+  _clickTimer = setTimeout(function(){
+    _clickTimer = null;
+    openCaptionPreview(id, e);
+  }, 250);
+}
+
+// 超管双击切换灰色标记（仅影响当前单一卡片）
 async function toggleGray(id, el, e) {
   if(!isSuperAdmin) return;
   e.stopPropagation();
   e.preventDefault();
-  
-  // 找到同批次的所有卡片
-  var cards = document.querySelectorAll('.event-card[onclick*="' + id + '"]');
-  
+
   // 如果当前未标记 → 标灰
   if(!el.classList.contains('card-grayed')) {
     el.classList.add('card-grayed');
-    // 同批次也标灰
-    cards.forEach(c => c.classList.add('card-grayed'));
     await api('PATCH','bj_schedules',`?id=eq.${id}`,{ is_grayed: true });
   } else {
     el.classList.remove('card-grayed');
-    cards.forEach(c => c.classList.remove('card-grayed'));
     await api('PATCH','bj_schedules',`?id=eq.${id}`,{ is_grayed: false });
   }
 }
+
+// 全局双击事件代理：超管双击卡片切换灰色
+document.addEventListener('dblclick', function(e) {
+  if(!isSuperAdmin) return;
+  var card = e.target.closest('.event-card[data-sid]');
+  if(!card) return;
+  e.stopPropagation();
+  e.preventDefault();
+  // 清除待执行的单击定时器
+  if(_clickTimer) { clearTimeout(_clickTimer); _clickTimer = null; }
+  var sid = card.getAttribute('data-sid');
+  toggleGray(parseInt(sid), card, e);
+});
 
 // ===== SCHEDULE MODAL =====
 function openAddModal(preDate='', preSlot='') {
