@@ -232,6 +232,14 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg)
 .date-picker-cell{text-align:center;padding:8px 4px;border:1px solid #f1f5f9;font-size:12px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
 .date-picker-cell:hover{background:#eff6ff}
 .date-picker-cell.selected{background:#dcfce7;border-color:#16a34a}
+/* 双格日期选择器（上=上午，下=下午） */
+.date-picker-cell{padding:0;display:flex;flex-direction:column}
+.date-picker-half{display:flex;align-items:center;justify-content:center;flex:1;padding:4px 2px;min-height:22px;font-size:10px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent;border-radius:3px;margin:1px}
+.date-picker-half:hover{background:#eff6ff}
+.date-picker-half.sel-am{background:#dcfce7;color:#16a34a;border-color:#16a34a}
+.date-picker-half.sel-pm{background:#fef3c7;color:#d97706;border-color:#f59e0b}
+.date-picker-half.disabled{opacity:.3;pointer-events:none}
+.date-picker-half .dp-half-label{font-size:9px;color:#94a3b8;margin-left:2px}
 .date-picker-cell.today .dp-day{background:var(--primary);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
 .date-picker-cell.other-month{opacity:.4}
 .date-picker-cell .dp-day{font-size:13px;font-weight:600;color:var(--text)}
@@ -1180,9 +1188,26 @@ async function openEditModal(id) {
     
     // 解析 JSON 字段
     md.service_accounts=j(md.circle_service_accounts||'[]');
-    md.circle_dates=j(md.circle_publish_dates||'[]');
+    var rawCircleDates=j(md.circle_publish_dates||'[]');
+    var rawCommunityDates=j(md.community_publish_dates||'[]');
+    var circleSlots=j(md.circle_time_slots||'[]');
+    var communitySlots=j(md.community_time_slots||'[]');
+    // 兼容旧数据：如果日期是纯日期格式(无_AM/_PM后缀)，需要根据时段拼接
+    md.circle_dates = rawCircleDates.map(function(d){
+      if(d.endsWith('_AM')||d.endsWith('_PM')) return d;
+      var slots = [];
+      if(circleSlots.includes('上午发圈')) slots.push(d+'_AM');
+      if(circleSlots.includes('下午发圈')) slots.push(d+'_PM');
+      return slots.length>0 ? slots : [d+'_AM']; // 无时段信息默认上午
+    }).flat();
+    md.community_dates = rawCommunityDates.map(function(d){
+      if(d.endsWith('_AM')||d.endsWith('_PM')) return d;
+      var slots = [];
+      if(communitySlots.includes('上午群发')) slots.push(d+'_AM');
+      if(communitySlots.includes('下午群发')) slots.push(d+'_PM');
+      return slots.length>0 ? slots : [d+'_AM'];
+    }).flat();
     md.community_groups=j(md.community_group_details||'[]');
-    md.community_dates=j(md.community_publish_dates||'[]');
     md.community_forms=j(md.community_publish_forms||'[]');
     md.contract_files=j(md.contract_files||'[]');
     
@@ -1306,7 +1331,7 @@ function renderStep2() {
   if(md.service_accounts.length===0 && allSA.length>0) md.service_accounts=[...allSA];
   const saHtml=allSA.map(v=>`<label class="checkbox-item ${md.service_accounts.includes(v)?'checked':''}" onclick="tck(this,'service_accounts','${v}')">${v}</label>`).join('');
   
-  // 渲染日期选择器
+  // 渲染日期选择器（上下两格：上午发圈/下午发圈）
   const curDates = md.circle_dates || [];
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -1323,17 +1348,18 @@ function renderStep2() {
     d.setDate(firstDay.getDate() + i);
     var ds = fmtDate(d);
     var isCurrentMonth = d.getMonth() + 1 === pickerM;
-    var isSelected = curDates.indexOf(ds) >= 0;
     var isTodayD = d >= today;
-    var classes = ['date-picker-cell'];
-    if (isSelected) classes.push('selected');
-    if (!isCurrentMonth) classes.push('other-month');
-    if (isTodayD && isCurrentMonth) classes.push('today');
-    var disabled = !isTodayD || !isCurrentMonth ? ' style="opacity:0.3;pointer-events:none"' : '';
+    var disabled = (!isTodayD || !isCurrentMonth);
     var wday = WEEKDAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1];
-    cells += '<div class="' + classes.join(' ') + '"' + disabled + ' onclick="toggleCircleDate(\'' + ds + '\', this)">' +
-      '<span class="dp-day">' + d.getDate() + '</span>' +
-      '<span class="dp-week">' + wday + '</span>' +
+    var disCls = disabled ? ' disabled' : '';
+    var amSel = curDates.includes(ds + '_AM') ? ' sel-am' : '';
+    var pmSel = curDates.includes(ds + '_PM') ? ' sel-pm' : '';
+    var anySel = amSel || pmSel ? ' selected' : '';
+    var othCls = !isCurrentMonth ? ' other-month' : '';
+    var todayCls = (isTodayD && isCurrentMonth) ? ' today' : '';
+    cells += '<div class="date-picker-cell' + anySel + othCls + todayCls + '">' +
+      '<div class="date-picker-half' + amSel + disCls + '" onclick="toggleCircleDateSlot(\'' + ds + '_AM\',this)">' + d.getDate() + '<span class="dp-half-label">上午</span></div>' +
+      '<div class="date-picker-half' + pmSel + disCls + '" onclick="toggleCircleDateSlot(\'' + ds + '_PM\',this)">' + d.getDate() + '<span class="dp-half-label">下午</span></div>' +
       '</div>';
   }
 
@@ -1370,15 +1396,7 @@ function renderStep2() {
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
       <div id="circle_dates_wrap">${datePickerHtml}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
-    </div>
-    <div class="form-group">
-      <label class="required">宣发时段（可多选）</label>
-      <div class="checkbox-group" id="rg_circle_time">
-        <label class="checkbox-item ${(md.circle_time_slots||[]).includes('上午发圈')?'checked':''}" onclick="toggleTimeSlot(this,'circle_time_slots','上午发圈')">上午发圈</label>
-        <label class="checkbox-item ${(md.circle_time_slots||[]).includes('下午发圈')?'checked':''}" onclick="toggleTimeSlot(this,'circle_time_slots','下午发圈')">下午发圈</label>
-      </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 可同时选择上午和下午</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击上午=上午发圈，点击下午=下午发圈，绿色=上午，黄色=下午</div>
     </div>
     <div class="form-group">
       <label>宣传文案</label>
@@ -1436,15 +1454,37 @@ function removePoster(type) {
   if (delBtn2 && delBtn2.textContent.includes('删除')) delBtn2.remove();
 }
 
-function toggleCircleDate(ds, el) {
+function toggleCircleDateSlot(dateSlot, el) {
+  // dateSlot 格式: '2026-06-01_AM' 或 '2026-06-01_PM'
   if (!md.circle_dates) md.circle_dates = [];
-  var idx = md.circle_dates.indexOf(ds);
+  var idx = md.circle_dates.indexOf(dateSlot);
   if (idx >= 0) {
     md.circle_dates.splice(idx, 1);
-    el.classList.remove('selected');
+    el.classList.remove('sel-am', 'sel-pm');
+    // 检查父cell是否还有选中
+    var parent = el.parentElement;
+    if (parent && !parent.querySelector('.sel-am,.sel-pm')) parent.classList.remove('selected');
   } else {
-    md.circle_dates.push(ds);
-    el.classList.add('selected');
+    md.circle_dates.push(dateSlot);
+    var slot = dateSlot.endsWith('_AM') ? 'sel-am' : 'sel-pm';
+    el.classList.add(slot);
+    el.parentElement.classList.add('selected');
+  }
+}
+
+function toggleCommunityDateSlot(dateSlot, el) {
+  if (!md.community_dates) md.community_dates = [];
+  var idx = md.community_dates.indexOf(dateSlot);
+  if (idx >= 0) {
+    md.community_dates.splice(idx, 1);
+    el.classList.remove('sel-am', 'sel-pm');
+    var parent = el.parentElement;
+    if (parent && !parent.querySelector('.sel-am,.sel-pm')) parent.classList.remove('selected');
+  } else {
+    md.community_dates.push(dateSlot);
+    var slot = dateSlot.endsWith('_AM') ? 'sel-am' : 'sel-pm';
+    el.classList.add(slot);
+    el.parentElement.classList.add('selected');
   }
 }
 
@@ -1494,11 +1534,13 @@ function step2Next() {
   const serviceAccounts = md.service_accounts || [];
   if (serviceAccounts.length === 0) return toast('请至少选择一个客服号', 'error');
   
-  // 验证宣发日期
-  if (!md.circle_dates || md.circle_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
+  // 验证宣发日期（已包含上午/下午时段信息）
+  if (!md.circle_dates || md.circle_dates.length === 0) return toast('请至少选择一个宣发日期（上午/下午）', 'error');
   
-  // 验证宣发时段（可多选）
-  if (!md.circle_time_slots || md.circle_time_slots.length === 0) return toast('请至少选择一个宣发时段', 'error');
+  // 根据选择的日期时段自动生成 circle_time_slots
+  md.circle_time_slots = md.circle_dates.filter(d => d.endsWith('_AM')).map(d => '上午发圈')
+    .concat(md.circle_dates.filter(d => d.endsWith('_PM')).map(d => '下午发圈'))
+    .filter((v, i, a) => a.indexOf(v) === i);
   
   // 更新步骤指示器
   currentStep = 3;
@@ -1536,7 +1578,7 @@ function renderStep3() {
   const fms=['普通群发','@所有人','群置顶'];
   const formHtml=fms.map(f=>`<label class="checkbox-item ${(md.community_forms||[]).includes(f)?'checked':''}" onclick="tck(this,'community_forms','${f}')">${f}</label>`).join('');
   
-  // 渲染日期选择器
+  // 渲染日期选择器（上下两格：上午群发/下午群发）
   const curDates = md.community_dates || [];
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -1553,17 +1595,18 @@ function renderStep3() {
     d.setDate(firstDay.getDate() + i);
     var ds = fmtDate(d);
     var isCurrentMonth = d.getMonth() + 1 === pickerM;
-    var isSelected = curDates.indexOf(ds) >= 0;
     var isTodayD = d >= today;
-    var classes = ['date-picker-cell'];
-    if (isSelected) classes.push('selected');
-    if (!isCurrentMonth) classes.push('other-month');
-    if (isTodayD && isCurrentMonth) classes.push('today');
-    var disabled = !isTodayD || !isCurrentMonth ? ' style="opacity:0.3;pointer-events:none"' : '';
+    var disabled = (!isTodayD || !isCurrentMonth);
     var wday = WEEKDAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1];
-    cells += '<div class="' + classes.join(' ') + '"' + disabled + ' onclick="toggleCommunityDate(\'' + ds + '\', this)">' +
-      '<span class="dp-day">' + d.getDate() + '</span>' +
-      '<span class="dp-week">' + wday + '</span>' +
+    var disCls = disabled ? ' disabled' : '';
+    var amSel = curDates.includes(ds + '_AM') ? ' sel-am' : '';
+    var pmSel = curDates.includes(ds + '_PM') ? ' sel-pm' : '';
+    var anySel = amSel || pmSel ? ' selected' : '';
+    var othCls = !isCurrentMonth ? ' other-month' : '';
+    var todayCls = (isTodayD && isCurrentMonth) ? ' today' : '';
+    cells += '<div class="date-picker-cell' + anySel + othCls + todayCls + '">' +
+      '<div class="date-picker-half' + amSel + disCls + '" onclick="toggleCommunityDateSlot(\'' + ds + '_AM\',this)">' + d.getDate() + '<span class="dp-half-label">上午</span></div>' +
+      '<div class="date-picker-half' + pmSel + disCls + '" onclick="toggleCommunityDateSlot(\'' + ds + '_PM\',this)">' + d.getDate() + '<span class="dp-half-label">下午</span></div>' +
       '</div>';
   }
 
@@ -1604,15 +1647,7 @@ function renderStep3() {
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
       <div id="community_dates_wrap">${datePickerHtml}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击日期选中/取消，绿色为已选</div>
-    </div>
-    <div class="form-group">
-      <label class="required">宣发时段（可多选）</label>
-      <div class="checkbox-group" id="rg_community_time">
-        <label class="checkbox-item ${(md.community_time_slots||[]).includes('上午群发')?'checked':''}" onclick="toggleTimeSlot(this,'community_time_slots','上午群发')">上午群发</label>
-        <label class="checkbox-item ${(md.community_time_slots||[]).includes('下午群发')?'checked':''}" onclick="toggleTimeSlot(this,'community_time_slots','下午群发')">下午群发</label>
-      </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 可同时选择上午和下午</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">&#128161; 点击上午=上午群发，点击下午=下午群发，绿色=上午，黄色=下午</div>
     </div>
     <div class="form-group">
       <label class="required">宣传形式（可多选）</label>
@@ -1659,18 +1694,7 @@ function renderStep3() {
   document.getElementById('sch-next-btn').onclick=submitSchedule;
 }
 
-function toggleCommunityDate(ds, el) {
-  if (!md.community_dates) md.community_dates = [];
-  var idx = md.community_dates.indexOf(ds);
-  if (idx >= 0) {
-    md.community_dates.splice(idx, 1);
-    el.classList.remove('selected');
-  } else {
-    md.community_dates.push(ds);
-    el.classList.add('selected');
-  }
-}
-
+// toggleCommunityDateSlot 已在上方定义
 function changeCommunityPickerMonth(delta) {
   var x = new Date(pickerMonth);
   x.setMonth(x.getMonth() + delta);
@@ -1694,11 +1718,13 @@ async function submitSchedule() {
   const communityGroups = md.community_groups || [];
   if (communityGroups.length === 0) return toast('请至少选择一个群明细', 'error');
   
-  // 验证宣发日期
-  if (!md.community_dates || md.community_dates.length === 0) return toast('请至少选择一个宣发日期', 'error');
+  // 验证宣发日期（已包含上午/下午时段信息）
+  if (!md.community_dates || md.community_dates.length === 0) return toast('请至少选择一个宣发日期（上午/下午）', 'error');
   
-  // 验证宣发时段（可多选）
-  if (!md.community_time_slots || md.community_time_slots.length === 0) return toast('请至少选择一个社群宣发时段', 'error');
+  // 根据选择的日期时段自动生成 community_time_slots
+  md.community_time_slots = md.community_dates.filter(d => d.endsWith('_AM')).map(d => '上午群发')
+    .concat(md.community_dates.filter(d => d.endsWith('_PM')).map(d => '下午群发'))
+    .filter((v, i, a) => a.indexOf(v) === i);
   
   // 验证宣传形式
   const communityForms = md.community_forms || [];
@@ -1714,21 +1740,42 @@ async function submitSchedule() {
   const newFiles = pendingFiles.map(f => ({name: f.name, url: URL.createObjectURL(f), size: f.size}));
   const allFiles = [...existingFiles, ...newFiles];
   
-  // 合并所有宣发日期（朋友圈 + 社群）
-  const allDates = [...new Set([...(md.circle_dates || []), ...(md.community_dates || [])])];
-  const total = allDates.length;
+  // 从带时段的日期列表中拆出所有 (日期, 时段) 组合
+  // circle_dates 格式: ['2026-06-01_AM', '2026-06-01_PM', ...]
+  const circleDateSlots = (md.circle_dates || []).map(d => {
+    var isAM = d.endsWith('_AM');
+    return { date: d.replace(/_[AP]M$/, ''), slot: isAM ? '上午发圈' : '下午发圈' };
+  });
+  const communityDateSlots = (md.community_dates || []).map(d => {
+    var isAM = d.endsWith('_AM');
+    return { date: d.replace(/_[AP]M$/, ''), slot: isAM ? '上午群发' : '下午群发' };
+  });
+  
+  // 合并所有唯一的 (日期, 时段) 组合 → 每个组合一条记录
+  const allEntries = {};
+  circleDateSlots.forEach(e => { allEntries[e.date + '|' + e.slot] = { date: e.date, time_slots: [e.slot], circle_time_slots: [e.slot] }; });
+  communityDateSlots.forEach(e => {
+    var key = e.date + '|' + e.slot;
+    if (allEntries[key]) {
+      allEntries[key].time_slots.push(e.slot);
+      allEntries[key].community_time_slots = [e.slot];
+    } else {
+      allEntries[key] = { date: e.date, time_slots: [e.slot], circle_time_slots: [], community_time_slots: [e.slot] };
+    }
+  });
+  const allDateSlotEntries = Object.values(allEntries);
+  const total = allDateSlotEntries.length;
   
   if (total > 30) { toast('批量数量不超过30条，请减少选择', 'error'); return; }
   
   showLoading(true);
   
   try {
-    // 合并所有时段（朋友圈 + 社群）
-    const allTimeSlots = [
+    // 合并所有时段（用于兼容旧展示）
+    const allTimeSlots = [...new Set([
       ...(md.circle_time_slots || []),
       ...(md.community_time_slots || [])
-    ];
-    const uniqueTimeSlots = [...new Set(allTimeSlots)];
+    ])];
     
     // 构建公共字段
     const commonPayload = {
@@ -1736,7 +1783,7 @@ async function submitSchedule() {
       department: md.department,
       activity_type: md.activity_type,
       owner: md.owner,
-      time_slots: JSON.stringify(uniqueTimeSlots),
+      time_slots: JSON.stringify(allTimeSlots),
       circle_service_accounts: JSON.stringify(md.service_accounts || []),
       circle_publish_dates: JSON.stringify(md.circle_dates || []),
       circle_time_slots: JSON.stringify(md.circle_time_slots || []),
@@ -1759,20 +1806,20 @@ async function submitSchedule() {
       // ===== 编辑模式：更新整个批次 =====
       
       // 1. 获取当前批次的所有记录
-      const batchRecords = await api('GET','bj_schedules',`?batch_id=eq.${md.batch_id}&select=id,date`);
-      const existingDates = batchRecords.map(r => r.date);
+      const batchRecords = await api('GET','bj_schedules',`?batch_id=eq.${md.batch_id}&select=id,date,time_slot`);
+      const existingDateSlotKeys = batchRecords.map(r => r.date);
       const existingIds = batchRecords.map(r => r.id);
       
-      // 2. 需要保留的日期
-      const datesToKeep = allDates.filter(d => existingDates.includes(d));
+      // 2. 需要保留的记录（按date匹配）
+      const newEntryDates = allDateSlotEntries.map(e => e.date);
       // 3. 需要新增的日期
-      const datesToAdd = allDates.filter(d => !existingDates.includes(d));
+      const datesToAdd = allDateSlotEntries.filter(e => !existingDateSlotKeys.includes(e.date)).map(e => e.date);
       // 4. 需要删除的记录（不在新日期范围内的）
-      const idsToDelete = batchRecords.filter(r => !allDates.includes(r.date)).map(r => r.id);
+      const idsToDelete = batchRecords.filter(r => !newEntryDates.includes(r.date)).map(r => r.id);
       
       // 5. 更新现有记录
       for (const record of batchRecords) {
-        if(allDates.includes(record.date)) {
+        if(newEntryDates.includes(record.date)) {
           await api('PATCH','bj_schedules',`?id=eq.${record.id}`, {
             ...commonPayload,
             date: record.date
@@ -1801,10 +1848,10 @@ async function submitSchedule() {
       const batchId = md.batch_id || crypto.randomUUID();
       let count = 0;
       
-      for (const d of allDates) {
+      for (const entry of allDateSlotEntries) {
         await api('POST','bj_schedules','', {
           ...commonPayload,
-          date: d,
+          date: entry.date,
           batch_id: batchId,
           created_by: currentUser.id
         });
@@ -2417,7 +2464,6 @@ async function rmGroupChild(childId, parentId, encodedParent, encodedChild) {
     renderOptsPanel();
   }catch(e){toast('删除失败','error');}
   showLoading(false);
-}
 }
 
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
