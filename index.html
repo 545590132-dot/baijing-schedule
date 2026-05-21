@@ -1386,6 +1386,11 @@ function renderStep2() {
   if(!md.circle_time_slot) md.circle_time_slot='';
   if(md.circle_hongbao === undefined) md.circle_hongbao = null;
 
+  // 异步加载同活动现有朋友圈排期（用于实时规则校验）
+  if (md.activity_name) {
+    _loadCircleRuleCache(md.activity_name);
+  }
+
   // 客服号（朋友圈）- 默认全选
   const allSA=opts.circleServiceAccounts||[];
   if(md.service_accounts.length===0 && allSA.length>0) md.service_accounts=[...allSA];
@@ -1514,17 +1519,45 @@ function removePoster(type) {
   if (delBtn2 && delBtn2.textContent.includes('删除')) delBtn2.remove();
 }
 
+// 朋友圈排期规则缓存（步骤2选择日期时实时校验用）
+var _circleRuleCache = null;
+var _circleRuleCacheName = '';
+
+async function _loadCircleRuleCache(activityName) {
+  if (_circleRuleCacheName === activityName && _circleRuleCache !== null) return;
+  _circleRuleCacheName = activityName;
+  try {
+    var excludeBatch = editingId && md.batch_id ? md.batch_id : null;
+    var q = '?activity_name=eq.' + encodeURIComponent(activityName) + '&select=id,date,circle_time_slots,batch_id';
+    var data = await api('GET', 'bj_schedules', q);
+    if (data) {
+      _circleRuleCache = data.filter(function(r) {
+        if (excludeBatch && r.batch_id === excludeBatch) return false;
+        var cSlots = j(r.circle_time_slots || '[]');
+        return cSlots.length > 0;
+      });
+    }
+  } catch(err) { console.warn('加载朋友圈规则缓存失败', err); _circleRuleCache = []; }
+}
+
 function toggleCircleDateSlot(dateSlot, el) {
   // dateSlot 格式: '2026-06-01_AM' 或 '2026-06-01_PM'
   if (!md.circle_dates) md.circle_dates = [];
   var idx = md.circle_dates.indexOf(dateSlot);
   if (idx >= 0) {
+    // 取消选择（允许取消，不做规则校验）
     md.circle_dates.splice(idx, 1);
     el.classList.remove('sel-am', 'sel-pm');
-    // 检查父cell是否还有选中
     var parent = el.parentElement;
     if (parent && !parent.querySelector('.sel-am,.sel-pm')) parent.classList.remove('selected');
   } else {
+    // 新增选择：先校验排期规则
+    var pureDate = dateSlot.replace(/_[AP]M$/, '');
+    var ruleMsg = validateCircleDateRule(pureDate);
+    if (ruleMsg) {
+      toast(ruleMsg, 'error');
+      return;
+    }
     md.circle_dates.push(dateSlot);
     var slot = dateSlot.endsWith('_AM') ? 'sel-am' : 'sel-pm';
     el.classList.add(slot);
@@ -1532,20 +1565,154 @@ function toggleCircleDateSlot(dateSlot, el) {
   }
 }
 
+// 朋友圈日期实时校验（同步，基于缓存数据）
+function validateCircleDateRule(pureDate) {
+  // 获取当前已选的所有朋友圈日期（纯日期）
+  var currentDates = (md.circle_dates || []).map(function(d) { return d.replace(/_[AP]M$/, ''); });
+  currentDates = [...new Set(currentDates)].sort();
+
+  var newDate = new Date(pureDate + 'T00:00:00');
+
+  // 获取同活动现有排期缓存
+  var existing = _circleRuleCache || [];
+  // 按周分组现有日期
+  var weekExisting = {};
+  existing.forEach(function(r) {
+    var wk = _getWeekKeySimple(r.date);
+    if (!weekExisting[wk]) weekExisting[wk] = new Set();
+    weekExisting[wk].add(r.date);
+  });
+
+  var newWeek = _getWeekKeySimple(pureDate);
+  var existSet = weekExisting[newWeek] || new Set();
+  var currentInWeek = currentDates.filter(function(d) { return _getWeekKeySimple(d) === newWeek; });
+
+  // 规则1：每周最多2个日期
+  if (existSet.size + currentInWeek.length >= 2) {
+    return '排期规则：同一活动每周最多选择2个朋友圈时段（' + newWeek + ' 已有' + existSet.size + '个，本次已选' + currentInWeek.length + '个）';
+  }
+
+  // 规则2：间隔至少1天 — 合并本周内所有日期（已选+新+现有）检查间隔
+  var allWeekDates = [...currentInWeek, pureDate, ...existSet].sort();
+  for (var i = 0; i < allWeekDates.length - 1; i++) {
+    var d1 = new Date(allWeekDates[i] + 'T00:00:00');
+    var d2 = new Date(allWeekDates[i + 1] + 'T00:00:00');
+    if ((d2 - d1) / 86400000 < 1) {
+      return '排期规则：每周朋友圈时段之间至少间隔1天（' + allWeekDates[i] + ' 与 ' + allWeekDates[i + 1] + ' 冲突，周' + newWeek + '）';
+    }
+  }
+
+  return null; // 通过校验
+}
+
+// 简化版 getWeekKey（同步，用于日期选择时实时校验）
+function _getWeekKeySimple(dateStr) {
+  var d = new Date(dateStr + 'T00:00:00');
+  d.setHours(0,0,0,0);
+  var day = d.getDay();
+  var diff = day === 0 ? -3 : 4 - day;
+  var thu = new Date(d);
+  thu.setDate(d.getDate() + diff);
+  var jan1 = new Date(thu.getFullYear(), 0, 1);
+  var weekNum = Math.ceil(((thu - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return thu.getFullYear() + '-W' + String(weekNum).padStart(2, '0');
+}
+
+// 判断群是否是官方群（一级分类名包含"官方"）- 全局函数
+function isOfficialGroup(groupName) {
+  var allCats = opts.communityGroups || [];
+  for (var i = 0; i < allCats.length; i++) {
+    if (allCats[i].name.indexOf('官方') >= 0) {
+      var children = allCats[i].children || [];
+      for (var j = 0; j < children.length; j++) {
+        if (children[j].name === groupName || children[j].name.indexOf(groupName) === 0) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function toggleCommunityDateSlot(dateSlot, el) {
   if (!md.community_dates) md.community_dates = [];
   var idx = md.community_dates.indexOf(dateSlot);
   if (idx >= 0) {
+    // 取消选择（允许取消）
     md.community_dates.splice(idx, 1);
     el.classList.remove('sel-am', 'sel-pm');
     var parent = el.parentElement;
     if (parent && !parent.querySelector('.sel-am,.sel-pm')) parent.classList.remove('selected');
   } else {
+    // 新增选择：先校验排期规则
+    var pureDate = dateSlot.replace(/_[AP]M$/, '');
+    var ruleMsg = validateCommunityDateRule(pureDate);
+    if (ruleMsg) {
+      toast(ruleMsg, 'error');
+      return;
+    }
     md.community_dates.push(dateSlot);
     var slot = dateSlot.endsWith('_AM') ? 'sel-am' : 'sel-pm';
     el.classList.add(slot);
     el.parentElement.classList.add('selected');
   }
+}
+
+// 社群日期实时校验（同步，基于缓存数据）
+function validateCommunityDateRule(pureDate) {
+  var currentDates = (md.community_dates || []).map(function(d) { return d.replace(/_[AP]M$/, ''); });
+  currentDates = [...new Set(currentDates)].sort();
+
+  var newWeek = _getWeekKeySimple(pureDate);
+  var currentInWeek = currentDates.filter(function(d) { return _getWeekKeySimple(d) === newWeek; });
+
+  // 如果还没有选任何子群，跳过官方/非官方群校验（提交时再校验）
+  var newGroups = md.community_groups || [];
+  if (newGroups.length === 0) return null;
+
+  var hasOfficial = false, hasNonOfficial = false;
+  newGroups.forEach(function(g) { if(isOfficialGroup(g)) hasOfficial=true; else hasNonOfficial=true; });
+
+  // 获取同活动现有社群排期缓存
+  var existing = _communityRuleCache || [];
+  var weekOfficialDates = {};
+  var weekNonOfficialDates = {};
+  existing.forEach(function(r) {
+    var wk = _getWeekKeySimple(r.date);
+    var cmSlots = j(r.community_time_slots || '[]');
+    if (cmSlots.length === 0) return;
+    var groups = j(r.community_group_details || '[]');
+    var rOfficial = false, rNonOfficial = false;
+    groups.forEach(function(g) {
+      var gName = g.name || g.group_name || g || '';
+      if (isOfficialGroup(gName)) rOfficial = true; else rNonOfficial = true;
+    });
+    if (rOfficial) {
+      if (!weekOfficialDates[wk]) weekOfficialDates[wk] = new Set();
+      weekOfficialDates[wk].add(r.date);
+    }
+    if (rNonOfficial) {
+      if (!weekNonOfficialDates[wk]) weekNonOfficialDates[wk] = new Set();
+      weekNonOfficialDates[wk].add(r.date);
+    }
+  });
+
+  // 规则2：每周官方群最多1个时段
+  if (hasOfficial) {
+    var existOfficialSet = weekOfficialDates[newWeek] || new Set();
+    // existOfficialSet.size 是数据库中已有的，currentInWeek.length 是本次已选的（不含当前正要选的）
+    if (existOfficialSet.size + currentInWeek.length >= 1) {
+      return '排期规则：同一活动每周最多选择1个官方群时段（' + newWeek + ' 已有' + existOfficialSet.size + '个，本次已选' + currentInWeek.length + '个）';
+    }
+  }
+
+  // 规则3：每周非官方群最多1个时段
+  if (hasNonOfficial) {
+    var existNonOfficialSet = weekNonOfficialDates[newWeek] || new Set();
+    if (existNonOfficialSet.size + currentInWeek.length >= 1) {
+      return '排期规则：同一活动每周最多选择1个非官方群时段（' + newWeek + ' 已有' + existNonOfficialSet.size + '个，本次已选' + currentInWeek.length + '个）';
+    }
+  }
+
+  return null;
 }
 
 // 时段多选切换
@@ -1611,12 +1778,38 @@ function step2Next() {
   } catch(err) { toast('步骤跳转失败：' + err.message, 'error'); console.error(err); }
 }
 
+// 社群排期规则缓存（步骤3选择日期时实时校验用）
+var _communityRuleCache = null;
+var _communityRuleCacheName = '';
+
+async function _loadCommunityRuleCache(activityName) {
+  if (_communityRuleCacheName === activityName && _communityRuleCache !== null) return;
+  _communityRuleCacheName = activityName;
+  try {
+    var excludeBatch = editingId && md.batch_id ? md.batch_id : null;
+    var q = '?activity_name=eq.' + encodeURIComponent(activityName) + '&select=id,date,community_time_slots,community_group_details,batch_id';
+    var data = await api('GET', 'bj_schedules', q);
+    if (data) {
+      _communityRuleCache = data.filter(function(r) {
+        if (excludeBatch && r.batch_id === excludeBatch) return false;
+        var cmSlots = j(r.community_time_slots || '[]');
+        return cmSlots.length > 0;
+      });
+    }
+  } catch(err) { console.warn('加载社群规则缓存失败', err); _communityRuleCache = []; }
+}
+
 function renderStep3() {
   if(!Array.isArray(md.community_groups)) md.community_groups=j(md.community_group_details||'[]');
   if(!Array.isArray(md.community_dates)) md.community_dates=[];
   if(!Array.isArray(md.community_forms)) md.community_forms=j(md.community_publish_forms||'[]');
   if(!Array.isArray(md.community_time_slots)) md.community_time_slots=[];
   if(md.community_hongbao === undefined) md.community_hongbao = null;
+
+  // 异步加载同活动现有社群排期（用于实时规则校验）
+  if (md.activity_name) {
+    _loadCommunityRuleCache(md.activity_name);
+  }
 
   // 群明细（社群）- 二级分组选择（默认不选中）
   const allGroupCategories=opts.communityGroups||[];
@@ -1835,20 +2028,6 @@ async function submitSchedule() {
     var jan1 = new Date(thu.getFullYear(), 0, 1);
     var weekNum = Math.ceil(((thu - jan1) / 86400000 + jan1.getDay() + 1) / 7);
     return thu.getFullYear() + '-W' + String(weekNum).padStart(2, '0');
-  }
-
-  // 判断群是否是官方群（一级分类名包含"官方"）
-  function isOfficialGroup(groupName) {
-    var allCats = opts.communityGroups || [];
-    for (var i = 0; i < allCats.length; i++) {
-      if (allCats[i].name.indexOf('官方') >= 0) {
-        var children = allCats[i].children || [];
-        for (var j = 0; j < children.length; j++) {
-          if (children[j].name === groupName || children[j].name.indexOf(groupName) === 0) return true;
-        }
-      }
-    }
-    return false;
   }
 
   // 按周统计现有排期
