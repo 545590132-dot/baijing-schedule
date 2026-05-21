@@ -1815,13 +1815,18 @@ async function submitSchedule() {
     }
   } catch(ruleErr) { console.warn('规则校验查询失败，跳过校验', ruleErr); }
 
-  // 获取周ISO号
+  // 获取周ISO号（ISO 8601，周一为一周起始）
   function getWeekKey(dateStr) {
-    var d = new Date(dateStr);
+    var d = new Date(dateStr + 'T00:00:00');
     d.setHours(0,0,0,0);
-    var oneJan = new Date(d.getFullYear(),0,1);
-    var weekNum = Math.ceil(((d - oneJan) / 86400000 + oneJan.getDay() + 1) / 7);
-    return d.getFullYear() + '-W' + String(weekNum).padStart(2,'0');
+    // 找到该日期所在周的周四（ISO周归属依据）
+    var day = d.getDay(); // 0=Sun,1=Mon,...,6=Sat
+    var diff = day === 0 ? -3 : 4 - day; // 偏移到周四
+    var thu = new Date(d);
+    thu.setDate(d.getDate() + diff);
+    var jan1 = new Date(thu.getFullYear(), 0, 1);
+    var weekNum = Math.ceil(((thu - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    return thu.getFullYear() + '-W' + String(weekNum).padStart(2, '0');
   }
 
   // 判断群是否是官方群（一级分类名包含"官方"）
@@ -1874,64 +1879,67 @@ async function submitSchedule() {
   var newHasOfficial = false, newHasNonOfficial = false;
   newGroups.forEach(function(g) { if(isOfficialGroup(g)) newHasOfficial=true; else newHasNonOfficial=true; });
 
-  // 规则1：每周朋友圈最多2个时段（间隔至少1天）
-  var circleUniqueDates = [...new Set(newCircleDates)];
-  // 先检查新增自身是否满足间隔要求
-  for (var ci = 0; ci < circleUniqueDates.length - 1; ci++) {
-    var d1 = new Date(circleUniqueDates[ci]);
-    var d2 = new Date(circleUniqueDates[ci + 1]);
-    if ((d2 - d1) / 86400000 < 1) {
-      return toast('排期规则：每周朋友圈时段之间至少间隔1天', 'error');
-    }
-  }
-  // 检查加上现有排期后每周朋友圈总数
+  // ===== 规则1：每周朋友圈最多2个时段（间隔至少1天） =====
+  var circleUniqueDates = [...new Set(newCircleDates)].sort();
+  // 按周分组新日期
+  var circleByWeek = {};
   circleUniqueDates.forEach(function(cd) {
     var wk = getWeekKey(cd);
-    var existingCount = (weekCircleDates[wk] || new Set()).size;
-    // 如果该周已有排期，检查间隔
-    if (weekCircleDates[wk]) {
-      weekCircleDates[wk].forEach(function(ed) {
-        var diff = Math.abs((new Date(cd) - new Date(ed)) / 86400000);
-        if (diff < 1) {
-          return toast('排期规则：每周朋友圈时段之间至少间隔1天（与 ' + ed + ' 冲突）', 'error');
-        }
-      });
+    if (!circleByWeek[wk]) circleByWeek[wk] = [];
+    circleByWeek[wk].push(cd);
+  });
+
+  for (var cwk in circleByWeek) {
+    var weekDates = circleByWeek[cwk];
+    // 合并现有和新日期，检查总数
+    var existCircleSet = weekCircleDates[cwk] || new Set();
+    var totalCount = existCircleSet.size + weekDates.length;
+    if (totalCount > 2) {
+      return toast('排期规则：同一活动每周最多选择2个朋友圈时段（' + cwk + ' 已有' + existCircleSet.size + '个，新增' + weekDates.length + '个）', 'error');
     }
-  });
-  // 按周汇总朋友圈总日期数
-  var weekCircleTotal = {};
-  circleUniqueDates.forEach(function(cd) {
-    var wk = getWeekKey(cd);
-    weekCircleTotal[wk] = (weekCircleTotal[wk] || 0) + 1 + ((weekCircleDates[wk] || new Set()).size);
-  });
-  for (var wkKey in weekCircleTotal) {
-    if (weekCircleTotal[wkKey] > 2) {
-      return toast('排期规则：同一活动每周最多选择2个朋友圈时段（' + wkKey + ' 已有' + ((weekCircleDates[wkKey]||new Set()).size) + '个，新增' + circleUniqueDates.length + '个）', 'error');
+    // 合并所有日期（现有+新增）检查间隔≥1天
+    var allDates = [...existCircleSet, ...weekDates].sort();
+    for (var di = 0; di < allDates.length - 1; di++) {
+      var dd1 = new Date(allDates[di]);
+      var dd2 = new Date(allDates[di + 1]);
+      if ((dd2 - dd1) / 86400000 < 1) {
+        return toast('排期规则：每周朋友圈时段之间至少间隔1天（' + allDates[di] + ' 与 ' + allDates[di + 1] + ' 冲突，周' + cwk + '）', 'error');
+      }
     }
   }
 
-  // 规则2：每周官方群最多1个时段
+  // ===== 规则2：每周官方群最多1个时段 =====
   if (newHasOfficial) {
-    var officialUniqueDates = [...new Set(newCommunityDates)];
+    var officialUniqueDates = [...new Set(newCommunityDates)].sort();
+    var officialByWeek = {};
     officialUniqueDates.forEach(function(cd) {
       var wk = getWeekKey(cd);
-      var existingOfficialCount = (weekOfficialDates[wk] || new Set()).size;
-      if (existingOfficialCount + 1 > 1) {
-        return toast('排期规则：同一活动每周最多选择1个官方群时段（' + wkKey + ' 已占用）', 'error');
-      }
+      if (!officialByWeek[wk]) officialByWeek[wk] = 0;
+      officialByWeek[wk]++;
     });
+    for (var owk in officialByWeek) {
+      var existOfficialSet = weekOfficialDates[owk] || new Set();
+      if (existOfficialSet.size + officialByWeek[owk] > 1) {
+        return toast('排期规则：同一活动每周最多选择1个官方群时段（' + owk + ' 已有' + existOfficialSet.size + '个，新增' + officialByWeek[owk] + '个）', 'error');
+      }
+    }
   }
 
-  // 规则3：每周非官方群最多1个时段
+  // ===== 规则3：每周非官方群最多1个时段 =====
   if (newHasNonOfficial) {
-    var nonOfficialUniqueDates = [...new Set(newCommunityDates)];
+    var nonOfficialUniqueDates = [...new Set(newCommunityDates)].sort();
+    var nonOfficialByWeek = {};
     nonOfficialUniqueDates.forEach(function(cd) {
       var wk = getWeekKey(cd);
-      var existingCount = (weekNonOfficialDates[wk] || new Set()).size;
-      if (existingCount + 1 > 1) {
-        return toast('排期规则：同一活动每周最多选择1个非官方群时段（' + wkKey + ' 已占用）', 'error');
-      }
+      if (!nonOfficialByWeek[wk]) nonOfficialByWeek[wk] = 0;
+      nonOfficialByWeek[wk]++;
     });
+    for (var nwk in nonOfficialByWeek) {
+      var existNonOfficialSet = weekNonOfficialDates[nwk] || new Set();
+      if (existNonOfficialSet.size + nonOfficialByWeek[nwk] > 1) {
+        return toast('排期规则：同一活动每周最多选择1个非官方群时段（' + nwk + ' 已有' + existNonOfficialSet.size + '个，新增' + nonOfficialByWeek[nwk] + '个）', 'error');
+      }
+    }
   }
   
   // 收集所有数据
