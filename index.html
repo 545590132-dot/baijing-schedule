@@ -924,17 +924,25 @@ function renderCalendar() {
         const slotEvents = dayEvents.filter(ev => {
           // 兼容旧数据：time_slot 字段
           if (ev.time_slot === slot.key) return true;
-          // 检查宣发时段
+          // 检查朋友圈时段
           const circleSlots = j(ev.circle_time_slots || '[]');
           if (circleSlots.includes(slot.key)) return true;
           // 检查社群时段
           const communitySlots = j(ev.community_time_slots || '[]');
           return communitySlots.includes(slot.key);
         });
+        // 同一活动同一批次在同一时段只展示一次（防止旧数据重复）
+        var seenActivity = {};
+        const dedupedEvents = slotEvents.filter(ev => {
+          var dedupKey = ev.activity_name + '|' + (ev.batch_id || ev.id);
+          if (seenActivity[dedupKey]) return false;
+          seenActivity[dedupKey] = true;
+          return true;
+        });
         
         h += `<div class="cal-cell${tc}${ac}${!inMonth ? ' dim-cell' : ''}" ondblclick="${isSuperAdmin ? `dbClick('${ds}','${slot.key}',event)` : ''}">`;
-        slotEvents.forEach(ev => h += renderCard(ev, slot.key));
-        if (isAdmin && slotEvents.length === 0) h += '<div class="cell-add-hint">＋</div>';
+        dedupedEvents.forEach(ev => h += renderCard(ev, slot.key));
+        if (isAdmin && dedupedEvents.length === 0) h += '<div class="cell-add-hint">＋</div>';
         h += '</div>';
       }
       h += '</div>';
@@ -1961,8 +1969,11 @@ async function submitSchedule() {
   });
   
   // 合并所有唯一的 (日期, 时段) 组合 → 每个组合一条记录
+  // 每条记录只存储自己对应的 circle_time_slots / community_time_slots
   const allEntries = {};
-  circleDateSlots.forEach(e => { allEntries[e.date + '|' + e.slot] = { date: e.date, time_slots: [e.slot], circle_time_slots: [e.slot] }; });
+  circleDateSlots.forEach(e => {
+    allEntries[e.date + '|' + e.slot] = { date: e.date, time_slots: [e.slot], circle_time_slots: [e.slot], community_time_slots: [] };
+  });
   communityDateSlots.forEach(e => {
     var key = e.date + '|' + e.slot;
     if (allEntries[key]) {
@@ -1974,20 +1985,20 @@ async function submitSchedule() {
   });
   const allDateSlotEntries = Object.values(allEntries);
   const total = allDateSlotEntries.length;
-  
+
   if (total > 30) { toast('批量数量不超过30条，请减少选择', 'error'); return; }
-  
+
   showLoading(true);
-  
+
   try {
     // 合并所有时段（用于兼容旧展示）
     const allTimeSlots = [...new Set([
       ...(md.circle_time_slots || []),
       ...(md.community_time_slots || [])
     ])];
-    
-    // 构建公共字段
-    const commonPayload = {
+
+    // 构建公共字段（不含 circle_time_slots / community_time_slots，每条记录单独设置）
+    const basePayload = {
       activity_name: md.activity_name,
       department: md.department,
       activity_type: md.activity_type,
@@ -1995,12 +2006,10 @@ async function submitSchedule() {
       time_slots: JSON.stringify(allTimeSlots),
       circle_service_accounts: JSON.stringify(md.service_accounts || []),
       circle_publish_dates: JSON.stringify(md.circle_dates || []),
-      circle_time_slots: JSON.stringify(md.circle_time_slots || []),
       circle_caption: md.circle_caption || '',
       circle_poster: md.circle_poster || '',
       community_group_details: JSON.stringify(md.community_groups || []),
       community_publish_dates: JSON.stringify(md.community_dates || []),
-      community_time_slots: JSON.stringify(md.community_time_slots || []),
       community_publish_forms: JSON.stringify(md.community_forms || []),
       community_caption: md.community_caption || '',
       community_poster: md.community_poster || '',
@@ -2010,56 +2019,87 @@ async function submitSchedule() {
       screenshot_requirement: screenshotReq,
       updated_at: new Date().toISOString()
     };
-    
+
     if(editingId && md.batch_id) {
       // ===== 编辑模式：更新整个批次 =====
-      
+
       // 1. 获取当前批次的所有记录
-      const batchRecords = await api('GET','bj_schedules',`?batch_id=eq.${md.batch_id}&select=id,date,time_slot`);
-      const existingDateSlotKeys = batchRecords.map(r => r.date);
-      const existingIds = batchRecords.map(r => r.id);
-      
-      // 2. 需要保留的记录（按date匹配）
-      const newEntryDates = allDateSlotEntries.map(e => e.date);
-      // 3. 需要新增的日期
-      const datesToAdd = allDateSlotEntries.filter(e => !existingDateSlotKeys.includes(e.date)).map(e => e.date);
-      // 4. 需要删除的记录（不在新日期范围内的）
-      const idsToDelete = batchRecords.filter(r => !newEntryDates.includes(r.date)).map(r => r.id);
-      
-      // 5. 更新现有记录
-      for (const record of batchRecords) {
-        if(newEntryDates.includes(record.date)) {
-          await api('PATCH','bj_schedules',`?id=eq.${record.id}`, {
-            ...commonPayload,
-            date: record.date
-          });
+      const batchRecords = await api('GET','bj_schedules',`?batch_id=eq.${md.batch_id}&select=id,date,time_slot,circle_time_slots,community_time_slots`);
+      // 用 date + circle_time_slots + community_time_slots 作为唯一标识
+      var existingKeys = batchRecords.map(function(r) {
+        return r.date + '|' + JSON.stringify(j(r.circle_time_slots||'[]')) + '|' + JSON.stringify(j(r.community_time_slots||'[]'));
+      });
+
+      // 2. 新记录的唯一标识
+      var newKeys = allDateSlotEntries.map(function(e) {
+        return e.date + '|' + JSON.stringify(e.circle_time_slots || []) + '|' + JSON.stringify(e.community_time_slots || []);
+      });
+
+      // 3. 匹配：找出需要更新、新增、删除的记录
+      var matched = []; // {recordId, entry}
+      var unmatchedRecords = []; // 旧记录中没匹配到的
+      var usedNewIndices = new Set();
+
+      for (var bi = 0; bi < batchRecords.length; bi++) {
+        var found = false;
+        for (var ni = 0; ni < allDateSlotEntries.length; ni++) {
+          if (usedNewIndices.has(ni)) continue;
+          var ek = allDateSlotEntries[ni].date + '|' + JSON.stringify(allDateSlotEntries[ni].circle_time_slots || []) + '|' + JSON.stringify(allDateSlotEntries[ni].community_time_slots || []);
+          if (batchRecords[bi].date === allDateSlotEntries[ni].date) {
+            matched.push({recordId: batchRecords[bi].id, entry: allDateSlotEntries[ni]});
+            usedNewIndices.add(ni);
+            found = true;
+            break;
+          }
         }
+        if (!found) unmatchedRecords.push(batchRecords[bi]);
       }
-      
-      // 6. 新增日期记录
-      for (const d of datesToAdd) {
+
+      // 未匹配的新条目 → 新增
+      var toAdd = [];
+      for (var ni2 = 0; ni2 < allDateSlotEntries.length; ni2++) {
+        if (!usedNewIndices.has(ni2)) toAdd.push(allDateSlotEntries[ni2]);
+      }
+
+      // 5. 更新匹配到的记录
+      for (var mi = 0; mi < matched.length; mi++) {
+        var m = matched[mi];
+        await api('PATCH','bj_schedules',`?id=eq.${m.recordId}`, {
+          ...basePayload,
+          circle_time_slots: JSON.stringify(m.entry.circle_time_slots || []),
+          community_time_slots: JSON.stringify(m.entry.community_time_slots || []),
+          date: m.entry.date
+        });
+      }
+
+      // 6. 新增未匹配的记录
+      for (var ai = 0; ai < toAdd.length; ai++) {
         await api('POST','bj_schedules','', {
-          ...commonPayload,
-          date: d,
+          ...basePayload,
+          circle_time_slots: JSON.stringify(toAdd[ai].circle_time_slots || []),
+          community_time_slots: JSON.stringify(toAdd[ai].community_time_slots || []),
+          date: toAdd[ai].date,
           batch_id: md.batch_id,
           created_by: md.created_by || currentUser.id
         });
       }
-      
+
       // 7. 删除多余记录
-      for (const id of idsToDelete) {
-        await api('DELETE','bj_schedules',`?id=eq.${id}`);
+      for (var di2 = 0; di2 < unmatchedRecords.length; di2++) {
+        await api('DELETE','bj_schedules',`?id=eq.${unmatchedRecords[di2].id}`);
       }
-      
+
       toast(`已更新批次，共 ${total} 条`, 'success');
     } else {
       // ===== 新增模式 =====
       const batchId = md.batch_id || crypto.randomUUID();
       let count = 0;
-      
+
       for (const entry of allDateSlotEntries) {
         await api('POST','bj_schedules','', {
-          ...commonPayload,
+          ...basePayload,
+          circle_time_slots: JSON.stringify(entry.circle_time_slots || []),
+          community_time_slots: JSON.stringify(entry.community_time_slots || []),
           date: entry.date,
           batch_id: batchId,
           created_by: currentUser.id
