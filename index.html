@@ -1389,8 +1389,10 @@ function selectRadio(el, groupId, field, value) {
 }
 
 function step2Next() {
+  try {
   // 保存宣传文案和海报
-  md.circle_caption = document.getElementById('f_circle_caption').value;
+  var captionEl = document.getElementById('f_circle_caption');
+  md.circle_caption = captionEl ? captionEl.value : (md.circle_caption || '');
   
   // 验证客服号
   const serviceAccounts = md.service_accounts || [];
@@ -1408,6 +1410,7 @@ function step2Next() {
   document.getElementById('sl2').className='step-line done';
   updateNavButtons();
   renderStep3();
+  } catch(err) { toast('步骤跳转失败：' + err.message, 'error'); console.error(err); }
 }
 
 function renderStep3() {
@@ -1585,8 +1588,10 @@ function removeExistingFile(fileName) {
 }
 
 async function submitSchedule() {
+  try {
   // 保存社群宣传文案
-  md.community_caption = document.getElementById('f_community_caption').value;
+  var commCaptionEl = document.getElementById('f_community_caption');
+  md.community_caption = commCaptionEl ? commCaptionEl.value : (md.community_caption || '');
   
   // 验证群明细
   const communityGroups = md.community_groups || [];
@@ -1606,7 +1611,8 @@ async function submitSchedule() {
   if (md.community_hongbao === undefined) return toast('请选择是否发红包', 'error');
   
   // 收集所有数据
-  const screenshotReq = document.getElementById('f_screenshot').value.trim();
+  var screenshotEl = document.getElementById('f_screenshot');
+  const screenshotReq = screenshotEl ? screenshotEl.value.trim() : (md.screenshot_requirement||'');
   const existingFiles = Array.isArray(md.contract_files) ? md.contract_files : [];
   const newFiles = pendingFiles.map(f => ({name: f.name, url: URL.createObjectURL(f), size: f.size}));
   const allFiles = [...existingFiles, ...newFiles];
@@ -1716,7 +1722,18 @@ async function submitSchedule() {
     await refreshCalendar();
   } catch(e) {
     showLoading(false);
-    toast('保存失败：' + e.message, 'error');
+    var msg = e.message || '';
+    if(msg.indexOf('column') >= 0 || msg.indexOf('schema') >= 0) {
+      toast('数据库字段缺失，请联系管理员执行 SQL 更新', 'error');
+    } else {
+      toast('保存失败：' + msg, 'error');
+    }
+    console.error('submitSchedule error:', e);
+  }
+  } catch(e2) {
+    showLoading(false);
+    toast('表单提交出错：' + (e2.message||''), 'error');
+    console.error('submitSchedule fatal:', e2);
   }
 }
 
