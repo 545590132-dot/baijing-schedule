@@ -998,7 +998,24 @@ async function openEditModal(id) {
   try {
     const data=await api('GET','bj_schedules',`?id=eq.${id}`);
     if(!data||!data[0]){showLoading(false);toast('数据不存在','error');return;}
-    editingId=id; pendingFiles=[]; md={...data[0]};
+    
+    const firstRecord = data[0];
+    editingId=id; 
+    pendingFiles=[]; 
+    md={...firstRecord};
+    
+    // 如果有 batch_id，加载同一批次的其他记录获取所有日期
+    if(md.batch_id) {
+      const batchData = await api('GET','bj_schedules',`?batch_id=eq.${md.batch_id}&select=date`);
+      if(batchData && batchData.length > 0) {
+        // 收集所有日期
+        const allDates = [...new Set(batchData.map(r => r.date))].sort();
+        md.dates = allDates;
+      }
+    } else {
+      md.dates = [md.date];
+    }
+    
     // 解析 JSON 字段
     md.service_accounts=j(md.circle_service_accounts||'[]');
     md.circle_dates=j(md.circle_publish_dates||'[]');
@@ -1006,15 +1023,16 @@ async function openEditModal(id) {
     md.community_dates=j(md.community_publish_dates||'[]');
     md.community_forms=j(md.community_publish_forms||'[]');
     md.contract_files=j(md.contract_files||'[]');
-    // 设置日期选择器月份为编辑日期所在月
+    
+    // 设置日期选择器月份
     if(md.date) {
       const dParts = md.date.split('-');
       pickerMonth = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, 1);
     } else {
       pickerMonth = new Date();
     }
-    currentStep = 1; // 重置步骤
-    document.getElementById('sch-modal-title').textContent='编辑排期';
+    currentStep = 1;
+    document.getElementById('sch-modal-title').textContent='编辑排期（同一批次）';
     document.getElementById('sch-modal').classList.remove('hidden');
     showLoading(false);
     try { renderStep1(); updateNavButtons(); } catch(e2){ toast('表单渲染失败','error'); console.error(e2); }
@@ -1521,7 +1539,6 @@ async function submitSchedule() {
   
   if (total > 30) { toast('批量数量不超过30条，请减少选择', 'error'); return; }
   
-  let count = 0;
   showLoading(true);
   
   try {
@@ -1530,47 +1547,90 @@ async function submitSchedule() {
       ...(md.circle_time_slots || []),
       ...(md.community_time_slots || [])
     ];
-    // 去重
     const uniqueTimeSlots = [...new Set(allTimeSlots)];
     
-    for (const d of allDates) {
-      const payload = {
-        activity_name: md.activity_name,
-        department: md.department,
-        activity_type: md.activity_type,
-        owner: md.owner,
-        date: d,
-        time_slots: JSON.stringify(uniqueTimeSlots), // 时段数组
-        // 朋友圈数据
-        circle_service_accounts: JSON.stringify(md.service_accounts || []),
-        circle_publish_dates: JSON.stringify(md.circle_dates || []),
-        circle_time_slots: JSON.stringify(md.circle_time_slots || []),
-        circle_caption: md.circle_caption || '',
-        circle_poster: md.circle_poster || '',
-        // 社群数据
-        community_group_details: JSON.stringify(md.community_groups || []),
-        community_publish_dates: JSON.stringify(md.community_dates || []),
-        community_time_slots: JSON.stringify(md.community_time_slots || []),
-        community_publish_forms: JSON.stringify(md.community_forms || []),
-        community_caption: md.community_caption || '',
-        community_poster: md.community_poster || '',
-        has_hongbao_community: md.community_hongbao,
-        // 合同及截图
-        contract_files: JSON.stringify(allFiles),
-        screenshot_requirement: screenshotReq,
-        // 时间戳
-        created_by: currentUser.id,
-        updated_at: new Date().toISOString()
-      };
+    // 构建公共字段
+    const commonPayload = {
+      activity_name: md.activity_name,
+      department: md.department,
+      activity_type: md.activity_type,
+      owner: md.owner,
+      time_slots: JSON.stringify(uniqueTimeSlots),
+      circle_service_accounts: JSON.stringify(md.service_accounts || []),
+      circle_publish_dates: JSON.stringify(md.circle_dates || []),
+      circle_time_slots: JSON.stringify(md.circle_time_slots || []),
+      circle_caption: md.circle_caption || '',
+      circle_poster: md.circle_poster || '',
+      community_group_details: JSON.stringify(md.community_groups || []),
+      community_publish_dates: JSON.stringify(md.community_dates || []),
+      community_time_slots: JSON.stringify(md.community_time_slots || []),
+      community_publish_forms: JSON.stringify(md.community_forms || []),
+      community_caption: md.community_caption || '',
+      community_poster: md.community_poster || '',
+      has_hongbao_community: md.community_hongbao,
+      contract_files: JSON.stringify(allFiles),
+      screenshot_requirement: screenshotReq,
+      updated_at: new Date().toISOString()
+    };
+    
+    if(editingId && md.batch_id) {
+      // ===== 编辑模式：更新整个批次 =====
       
-      // 调试日志
-      console.log('提交数据:', JSON.stringify(payload, null, 2));
+      // 1. 获取当前批次的所有记录
+      const batchRecords = await api('GET','bj_schedules',`?batch_id=eq.${md.batch_id}&select=id,date`);
+      const existingDates = batchRecords.map(r => r.date);
+      const existingIds = batchRecords.map(r => r.id);
       
-      await api('POST', 'bj_schedules', '', payload);
-      count++;
+      // 2. 需要保留的日期
+      const datesToKeep = allDates.filter(d => existingDates.includes(d));
+      // 3. 需要新增的日期
+      const datesToAdd = allDates.filter(d => !existingDates.includes(d));
+      // 4. 需要删除的记录（不在新日期范围内的）
+      const idsToDelete = batchRecords.filter(r => !allDates.includes(r.date)).map(r => r.id);
+      
+      // 5. 更新现有记录
+      for (const record of batchRecords) {
+        if(allDates.includes(record.date)) {
+          await api('PATCH','bj_schedules',`?id=eq.${record.id}`, {
+            ...commonPayload,
+            date: record.date
+          });
+        }
+      }
+      
+      // 6. 新增日期记录
+      for (const d of datesToAdd) {
+        await api('POST','bj_schedules','', {
+          ...commonPayload,
+          date: d,
+          batch_id: md.batch_id,
+          created_by: md.created_by || currentUser.id
+        });
+      }
+      
+      // 7. 删除多余记录
+      for (const id of idsToDelete) {
+        await api('DELETE','bj_schedules',`?id=eq.${id}`);
+      }
+      
+      toast(`已更新批次，共 ${allDates.length} 条`, 'success');
+    } else {
+      // ===== 新增模式 =====
+      const batchId = md.batch_id || crypto.randomUUID();
+      let count = 0;
+      
+      for (const d of allDates) {
+        await api('POST','bj_schedules','', {
+          ...commonPayload,
+          date: d,
+          batch_id: batchId,
+          created_by: currentUser.id
+        });
+        count++;
+      }
+      toast(`已提交 ${count} 条排期`, 'success');
     }
     
-    toast(`已提交 ${count} 条排期`, 'success');
     closeModal('sch-modal');
     pendingFiles = [];
     showLoading(false);
