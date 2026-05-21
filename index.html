@@ -1532,7 +1532,7 @@ function renderStep3() {
     <div class="form-group">
       <label class="required">群明细（可多选）</label>
       <div class="checkbox-group" id="f_community">${groupHtml}</div>
-      ${allGroups.length === 0 ? '<div style="font-size:11px;color:var(--warning);margin-top:4px">⚠️ 暂无群明细选项，请到"选项管理"中添加</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>'}
+      ${allGroupCategories.length === 0 ? '<div style="font-size:11px;color:var(--warning);margin-top:4px">⚠️ 暂无群明细选项，请到"选项管理"中添加</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💡 默认全部选中，可取消不需要的</div>'}
     </div>
     <div class="form-group">
       <label class="required">宣发日期（可多选）</label>
