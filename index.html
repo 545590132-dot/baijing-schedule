@@ -1061,7 +1061,7 @@ function renderCard(ev, slotKey) {
     var formsHtml = cf.length > 0
       ? cf.map(function(f){ return f === '普通群发' ? f : '<span style="color:#ef4444;font-weight:600">' + f + '</span>'; }).join('、')
       : '-';
-    var hasHongbao = ev.has_hongbao_community;
+    var hasHongbao = ev.has_hongbao_community === true || ev.has_hongbao_community === 'true';
     var hongbaoHtml = hasHongbao ? '<span style="color:#ef4444;font-weight:600">是</span>' : '否';
     var firstGroup = cg.length > 0 ? (parseGroupName(cg[0]).name || JSON.stringify(cg[0])) : '-';
 
@@ -2192,7 +2192,7 @@ async function submitSchedule() {
       community_publish_forms: JSON.stringify(md.community_forms || []),
       community_caption: md.community_caption || '',
       community_poster: md.community_poster || '',
-      has_hongbao_community: md.community_hongbao,
+      has_hongbao_community: md.community_hongbao === true,
       is_grayed: false,
       contract_files: JSON.stringify(allFiles),
       screenshot_requirement: screenshotReq,
@@ -2447,13 +2447,20 @@ async function openCaptionPreview(id, e) {
     const circlePoster = ev.circle_poster || '';
     const communityCaption = ev.community_caption || '';
     const communityPoster = ev.community_poster || '';
+    const cg = j(ev.community_group_details || '[]');
+    const cf = j(ev.community_publish_forms || '[]');
+    const hasHb = ev.has_hongbao_community === true || ev.has_hongbao_community === 'true';
+    const sa = j(ev.circle_service_accounts || '[]');
     
     let html = '';
     
     // 朋友圈文案海报
-    if(circleCaption || circlePoster) {
+    if(circleCaption || circlePoster || sa.length > 0) {
       html += '<div style="margin-bottom:20px">';
       html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px">📢 朋友圈宣传</div>';
+      if(sa.length > 0) {
+        html += '<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--text-muted)">客服号：</span>' + sa.join('、') + '</div>';
+      }
       if(circleCaption) {
         html += '<div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:10px;white-space:pre-wrap;line-height:1.6">'+circleCaption+'</div>';
       }
@@ -2463,10 +2470,27 @@ async function openCaptionPreview(id, e) {
       html += '</div>';
     }
     
-    // 社群文案海报
-    if(communityCaption || communityPoster) {
+    // 社群宣传信息
+    if(cg.length > 0 || communityCaption || communityPoster || cf.length > 0) {
       html += '<div style="margin-bottom:20px">';
       html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px">📣 社群宣传</div>';
+      // 群明细
+      if(cg.length > 0) {
+        var groupNames = cg.map(g => parseGroupName(g).name);
+        html += '<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--text-muted)">群明细：</span>' + groupNames.join('、') + '</div>';
+      }
+      // 宣传形式
+      if(cf.length > 0) {
+        var cfHtml = cf.map(function(f){ return f === '普通群发' ? f : '<span style="color:#ef4444;font-weight:600">' + f + '</span>'; }).join('、');
+        html += '<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--text-muted)">宣传形式：</span>' + cfHtml + '</div>';
+      }
+      // 是否发红包
+      html += '<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--text-muted)">红包：</span>' + (hasHb ? '<span style="color:#ef4444;font-weight:600">是</span>' : '否') + '</div>';
+      // 宣传日期
+      var cfd = j(ev.community_publish_dates || '[]');
+      if(cfd.length > 0) {
+        html += '<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--text-muted)">宣发日期：</span>' + cfd.join('、') + '</div>';
+      }
       if(communityCaption) {
         html += '<div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:10px;white-space:pre-wrap;line-height:1.6">'+communityCaption+'</div>';
       }
@@ -2521,7 +2545,7 @@ async function openDetail(id, e) {
         b+=`<div class="detail-section"><h4>📢 朋友圈宣传</h4>
           <div class="detail-row"><span class="detail-label">客服号</span><span class="detail-value">${sa.join('、')}</span></div>
           <div class="detail-row"><span class="detail-label">宣发日期</span><span class="detail-value">${cd.join('、')||'-'}</span></div>
-          <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle?'✅ 是':'❌ 否'}</span></div>
+          <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_circle===true||ev.has_hongbao_circle==='true'?'✅ 是':'❌ 否'}</span></div>
           ${ev.circle_caption ? `<div class="detail-row"><span class="detail-label">宣传文案</span><span class="detail-value" style="white-space:pre-wrap">${ev.circle_caption}</span></div>` : ''}
           ${ev.circle_poster ? `<div class="detail-row"><span class="detail-label">宣传海报</span><span class="detail-value"><img src="${ev.circle_poster}" style="max-width:200px;border-radius:8px;margin-top:8px"></span></div>` : ''}
         </div>`;
@@ -2531,7 +2555,7 @@ async function openDetail(id, e) {
           <div class="detail-row"><span class="detail-label">群明细</span><span class="detail-value">${cg.join('、')}</span></div>
           <div class="detail-row"><span class="detail-label">宣发日期</span><span class="detail-value">${cfd.join('、')||'-'}</span></div>
           <div class="detail-row"><span class="detail-label">宣传形式</span><span class="detail-value">${cf.join('、')||'-'}</span></div>
-          <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_community?'✅ 是':'❌ 否'}</span></div>
+          <div class="detail-row"><span class="detail-label">发红包</span><span class="detail-value">${ev.has_hongbao_community===true||ev.has_hongbao_community==='true'?'✅ 是':'❌ 否'}</span></div>
           ${ev.community_caption ? `<div class="detail-row"><span class="detail-label">宣传文案</span><span class="detail-value" style="white-space:pre-wrap">${ev.community_caption}</span></div>` : ''}
           ${ev.community_poster ? `<div class="detail-row"><span class="detail-label">宣传海报</span><span class="detail-value"><img src="${ev.community_poster}" style="max-width:200px;border-radius:8px;margin-top:8px"></span></div>` : ''}
         </div>`;
